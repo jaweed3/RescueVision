@@ -1,0 +1,26 @@
+# RescueVision Edge — Dependencies
+# Python >= 3.9 recommended
+
+# Core ML
+ultralytics==8.2.18
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Inference (CPU-only, no GPU needed at demo)
+onnxruntime==1.18.0
+
+# Data processing
+numpy>=1.24.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+PyYAML>=6.0
+
+# Notebook & visualization
+matplotlib>=3.7.0
+jupyter>=1.0.0
+ipykernel>=6.0.0
+tqdm>=4.65.0
+
+# ONNX export & optimization
+onnx>=1.15.0
+onnxsim>=0.4.33
