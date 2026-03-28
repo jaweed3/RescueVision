@@ -58,3 +58,11 @@ python src/prepare_visdrone.py
 python src/split_dataset.py
 # Lalu buka notebooks/training.ipynb
 ```
+
+## Langkah selanjutnya yang harus kamu lakukan SEKARANG (urutan ini penting):
+
+1. Download VisDrone dari https://github.com/VisDrone/VisDrone-Dataset — extract 3 split (train/val/test-dev) ke data/raw/
+2. Jalankan python scripts/prepare_visdrone.py --skip-download — ini melakukan class filtering dan split sebelum preprocessing
+3. Jalankan python scripts/verify_split.py — generate leakage report untuk submission
+4. Buka training.ipynb di PC lab, jalankan semua cell, biarkan training sampai selesai
+5. Setelah ada model.onnx, jalankan benchmark_cpu.py di laptop demo untuk verifikasi constraint C-A3
