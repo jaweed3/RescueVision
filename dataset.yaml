@@ -1,10 +1,11 @@
 # RescueVision Edge — Dataset Configuration
 # VisDrone-DET 2019 (pedestrian class only, remapped to class 0)
 
-path: .
+path: C:/Users/MASTER CORE/RescueVision
+
 train: train_data/images/train
-val:   train_data/images/val
-test:  test_data/images
+val: train_data/images/val
+test: test_data/images
 
 nc: 1
 names:

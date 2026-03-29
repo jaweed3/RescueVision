@@ -1,0 +1,16 @@
+Architecture Comparison Report
+Generated: 2026-03-29T21:05:18.779083
+Dataset: VisDrone-DET 2019 (pedestrian class, imgsz=416)
+=================================================================
+
+Metric                               YOLOv5n         YOLOv8n
+-----------------------------------------------------------------
+mAP@0.5 (val)                         0.4679          0.3038
+mAP@0.5:0.95 (val)                    0.1728          0.1157
+ONNX size (MB)                          7.49           11.70
+CPU mean latency (ms)                   18.0            30.4
+CPU max latency (ms)                    19.8            33.7
+
+=================================================================
+DECISION: YOLOv5n
+Reason: YOLOv8n does not outperform YOLOv5n (delta: -0.1641 mAP@0.5). YOLOv5n selected as final model per baseline-first protocol.

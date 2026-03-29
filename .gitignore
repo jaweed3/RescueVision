@@ -26,6 +26,9 @@ test_data/labels/
 # Ultralytics cache
 .ultralytics/
 
+# YoloV5 repository
+yolov5/
+
 # Runs
 runs/*/weights/
 
