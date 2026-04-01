@@ -9,6 +9,7 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
+backend/.venv/
 
 # Dataset (too large for git)
 data/raw/
@@ -35,3 +36,4 @@ runs/*/weights/
 # OS
 .DS_Store
 Thumbs.db
+
