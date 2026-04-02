@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import axios from 'axios'
 import DetectionResult from './components/DetectionResult'
 import VictimMap from './components/VictimMap'
@@ -6,32 +6,38 @@ import UploadZone from './components/UploadZone'
 import StatusBar from './components/StatusBar'
 import './App.css'
 
-const API = 'http://localhost:8000'
+const API = ''
 
 export default function App() {
-  const [results, setResults] = useState(null)
+  const [singleResult, setSingleResult] = useState(null)
+  const [batchResult, setBatchResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [manualGPS, setManualGPS] = useState({ lat: '', lon: '', alt: '80' })
   const [useManualGPS, setUseManualGPS] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewUrls, setPreviewUrls] = useState([])
   const [systemStatus, setSystemStatus] = useState(null)
 
   // Check system health on load
-  useState(() => {
+  useEffect(() => {
     axios.get(`${API}/health`)
       .then(r => setSystemStatus(r.data))
       .catch(() => setSystemStatus({ status: 'error', model_loaded: false }))
   }, [])
 
-  const handleUpload = async (file) => {
+  const handleUpload = async (files) => {
+    if (!files?.length) return
+
     setLoading(true)
     setError(null)
-    setResults(null)
-    setPreviewUrl(URL.createObjectURL(file))
+    setSingleResult(null)
+    setBatchResult(null)
 
-    const formData = new FormData()
-    formData.append('file', file)
+    // Release previous object URLs to avoid memory leaks on repeated uploads.
+    setPreviewUrls((prev) => {
+      prev.forEach((u) => URL.revokeObjectURL(u))
+      return files.map((f) => URL.createObjectURL(f))
+    })
 
     // Append manual GPS if provided
     const params = new URLSearchParams()
@@ -42,12 +48,27 @@ export default function App() {
     }
 
     try {
-      const res = await axios.post(
-        `${API}/detect?${params.toString()}`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      )
-      setResults(res.data)
+      if (files.length === 1) {
+        const formData = new FormData()
+        formData.append('file', files[0])
+
+        const res = await axios.post(
+          `${API}/detect?${params.toString()}`,
+          formData,
+          { headers: { 'Content-Type': 'multipart/form-data' } }
+        )
+        setSingleResult(res.data)
+      } else {
+        const formData = new FormData()
+        files.forEach((f) => formData.append('files', f))
+
+        const res = await axios.post(
+          `${API}/detect/batch?${params.toString()}`,
+          formData,
+          { headers: { 'Content-Type': 'multipart/form-data' } }
+        )
+        setBatchResult(res.data)
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Detection failed. Check backend connection.')
     } finally {
@@ -55,9 +76,42 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    return () => {
+      previewUrls.forEach((u) => URL.revokeObjectURL(u))
+    }
+  }, [previewUrls])
+
   const handleExport = () => {
     window.open(`${API}/export/csv`, '_blank')
   }
+
+  const hasSingle = !!singleResult
+  const hasBatch = !!batchResult
+  const hasResults = hasSingle || hasBatch
+
+  const mergedDetections = hasBatch
+    ? batchResult.results.flatMap((r, i) =>
+        r.detections.map((d, j) => ({ ...d, id: i * 1000 + j + 1 }))
+      )
+    : hasSingle
+      ? singleResult.detections
+      : []
+
+  const avgInferenceMs = hasBatch && batchResult.total_images > 0
+    ? (
+      batchResult.results.reduce((sum, r) => sum + (r.inference_ms || 0), 0) /
+      batchResult.total_images
+    ).toFixed(1)
+    : hasSingle
+      ? singleResult.inference_ms
+      : null
+
+  const gpsLabel = hasBatch
+    ? 'MIXED'
+    : hasSingle
+      ? singleResult.gps_source.toUpperCase()
+      : '-'
 
   return (
     <div className="app">
@@ -81,6 +135,7 @@ export default function App() {
           <section className="card">
             <h2>📤 Upload Foto Drone</h2>
             <UploadZone onUpload={handleUpload} loading={loading} />
+            <p className="hint batch-hint">Bisa pilih banyak foto sekaligus untuk deteksi batch.</p>
           </section>
 
           {/* GPS Configuration */}
@@ -152,33 +207,51 @@ export default function App() {
             </div>
           )}
 
-          {results && !loading && (
+          {hasResults && !loading && (
             <>
               {/* Stats */}
               <div className="stats-row">
                 <div className="stat-card urgent">
-                  <span className="stat-num">{results.total_victims}</span>
+                  <span className="stat-num">{hasBatch ? batchResult.total_victims : singleResult.total_victims}</span>
                   <span className="stat-label">Korban Terdeteksi</span>
                 </div>
                 <div className="stat-card">
-                  <span className="stat-num">{results.inference_ms}ms</span>
-                  <span className="stat-label">Waktu Inferensi</span>
+                  <span className="stat-num">{avgInferenceMs}ms</span>
+                  <span className="stat-label">Rata-rata Inferensi</span>
                 </div>
                 <div className="stat-card">
-                  <span className="stat-num">{results.gps_source.toUpperCase()}</span>
+                  <span className="stat-num">{hasBatch ? batchResult.total_images : 1}</span>
+                  <span className="stat-label">Total Gambar</span>
+                </div>
+                <div className="stat-card">
+                  <span className="stat-num">{gpsLabel}</span>
                   <span className="stat-label">Sumber GPS</span>
                 </div>
               </div>
 
               {/* Detection visualization */}
-              <DetectionResult
-                result={results}
-                previewUrl={previewUrl}
-              />
+              {hasSingle && (
+                <DetectionResult
+                  result={singleResult}
+                  previewUrl={previewUrls[0]}
+                />
+              )}
+
+              {hasBatch && (
+                <div className="batch-results">
+                  {batchResult.results.map((item, idx) => (
+                    <DetectionResult
+                      key={`${item.filename}-${idx}`}
+                      result={item}
+                      previewUrl={previewUrls[idx]}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Map */}
-              {results.detections.some(d => d.lat) && (
-                <VictimMap detections={results.detections} />
+              {mergedDetections.some(d => d.lat) && (
+                <VictimMap detections={mergedDetections} />
               )}
 
               {/* Export */}
@@ -188,11 +261,11 @@ export default function App() {
             </>
           )}
 
-          {!results && !loading && !error && (
+          {!hasResults && !loading && !error && (
             <div className="empty-state">
               <span>🛸</span>
-              <h3>Upload foto drone untuk memulai deteksi</h3>
-              <p>Sistem mendukung foto DJI dengan GPS EXIF otomatis</p>
+              <h3>Upload satu atau banyak foto drone untuk memulai deteksi</h3>
+              <p>Sistem mendukung batch processing dan GPS EXIF otomatis</p>
             </div>
           )}
         </section>

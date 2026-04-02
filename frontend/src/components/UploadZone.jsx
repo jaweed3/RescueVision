@@ -5,20 +5,24 @@ export default function UploadZone({ onUpload, loading }) {
   const inputRef = useRef()
   const [dragging, setDragging] = useState(false)
 
-  const handleFile = (file) => {
-    if (!file) return
+  const handleFiles = (fileList) => {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+
     const valid = ['image/jpeg', 'image/png', 'image/jpg']
-    if (!valid.includes(file.type)) {
-      alert('Format tidak didukung. Gunakan JPG atau PNG.')
+    const invalid = files.filter((f) => !valid.includes(f.type))
+    if (invalid.length > 0) {
+      alert('Sebagian file tidak didukung. Gunakan hanya JPG atau PNG.')
       return
     }
-    onUpload(file)
+
+    onUpload(files)
   }
 
   const onDrop = (e) => {
     e.preventDefault()
     setDragging(false)
-    handleFile(e.dataTransfer.files[0])
+    handleFiles(e.dataTransfer.files)
   }
 
   return (
@@ -32,17 +36,18 @@ export default function UploadZone({ onUpload, loading }) {
       <input
         ref={inputRef}
         type="file"
+        multiple
         accept="image/jpeg,image/jpg,image/png"
         style={{ display: 'none' }}
-        onChange={e => handleFile(e.target.files[0])}
+        onChange={e => handleFiles(e.target.files)}
       />
       {loading ? (
         <p>Memproses...</p>
       ) : (
         <>
           <span>📷</span>
-          <p>Drag & drop foto drone</p>
-          <small>atau klik untuk pilih file (JPG/PNG)</small>
+          <p>Drag & drop foto drone (multi-file)</p>
+          <small>atau klik untuk pilih banyak file (JPG/PNG)</small>
           <small className="hint-dji">Foto DJI: GPS koordinat otomatis terbaca</small>
         </>
       )}
