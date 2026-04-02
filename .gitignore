@@ -36,12 +36,6 @@ train_data/labels/
 test_data/images/
 test_data/labels/
 
-# Model weights (submit separately)
-*.pt
-*.pth
-*.h5
-*.onnx
-
 # Ultralytics cache
 .ultralytics/
 

@@ -246,7 +246,7 @@ YOLOv8n dipilih karena unggul 5.96 poin mAP@0.5 dengan latensi CPU tetap jauh di
 
 ## Tim
 
-| Nama                    | NIM          |
+| Nama                    | NIM          | 
 | ----------------------- | ------------ |
 | Wafa Bila Syaefurokhman | 442023611098 |
 | Farrel Ghozy Affifudin  | 452024611053 |
