@@ -54,18 +54,26 @@ app.add_middleware(
 # ─────────────────────────────────────────────
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 
+DEFAULT_CONFIG = {
+    "conf_threshold": 0.25,
+    "iou_threshold": 0.45,
+    "input_size": 640,
+    "grid_zone_size_m": 50,
+    "export_format": ["csv", "json"],
+    "max_batch_size": 100,
+}
+
 def load_config():
+    config = DEFAULT_CONFIG.copy()
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
-    return {
-        "conf_threshold": 0.25,
-        "iou_threshold": 0.45,
-        "input_size": 640,
-        "grid_zone_size_m": 50,
-        "export_format": ["csv", "json"],
-        "max_batch_size": 100
-    }
+        try:
+            with open(CONFIG_PATH) as f:
+                loaded = json.load(f) or {}
+            if isinstance(loaded, dict):
+                config.update(loaded)
+        except Exception:
+            pass
+    return config
 
 config = load_config()
 
