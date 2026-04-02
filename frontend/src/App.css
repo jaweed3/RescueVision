@@ -43,6 +43,35 @@ body {
 .logo h1 { font-size: 20px; font-weight: 700; color: var(--accent); }
 .logo p { font-size: 12px; color: var(--text-dim); }
 
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.status-chip.ok {
+  border-color: var(--green);
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+}
+.status-chip.warn {
+  border-color: var(--accent);
+  background: rgba(249, 115, 22, 0.15);
+  color: #fdba74;
+}
+.status-chip.err {
+  border-color: var(--red);
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
 /* Layout */
 .main {
   max-width: 1400px;
@@ -64,7 +93,7 @@ body {
 .card h2 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* Stats */
-.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -81,6 +110,7 @@ body {
 .toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px; }
 .toggle input { accent-color: var(--accent); }
 .hint { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; }
+.batch-hint { margin-top: 10px; margin-bottom: 0; }
 .gps-inputs { display: flex; flex-direction: column; gap: 10px; }
 .gps-inputs label { font-size: 12px; color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; }
 .gps-inputs input {
@@ -135,8 +165,17 @@ body {
 }
 .btn-export:hover { opacity: 0.9; }
 
+.batch-results {
+  display: grid;
+  gap: 16px;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .main { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .stats-row { grid-template-columns: 1fr; }
 }

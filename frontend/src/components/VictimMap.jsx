@@ -1,5 +1,5 @@
 // VictimMap.jsx — Leaflet map showing victim coordinates
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet'
+import { MapContainer, TileLayer, Popup, CircleMarker } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 

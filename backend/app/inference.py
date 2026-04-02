@@ -1,260 +1,164 @@
 """
-RescueVision Edge — FastAPI Backend
-Tahap 3: Model → API → App
-
-Run: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+RescueVision Edge - ONNX Inference Engine
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
-import uvicorn
-import json
-import os
-from pathlib import Path
-from typing import Optional
-import tempfile
-import shutil
+from __future__ import annotations
 
-from app.inference import RescueVisionInference
-from app.gps import extract_exif_gps, calculate_victim_coordinates
-from app.models import DetectionResult, BatchResult, InjectConfig
+import time
+from typing import Dict, List, Tuple
 
-# ─────────────────────────────────────────────
-# App initialization
-# ─────────────────────────────────────────────
-app = FastAPI(
-    title="RescueVision Edge API",
-    description="Lightweight on-device victim detection for post-disaster SAR",
-    version="1.0.0"
-)
-
-# CORS — allow React dev server
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:8000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ─────────────────────────────────────────────
-# Config (Dynamic Injection ready)
-# ─────────────────────────────────────────────
-CONFIG_PATH = Path(__file__).parent.parent / "config.json"
-
-def load_config():
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
-    return {
-        "conf_threshold": 0.25,
-        "iou_threshold": 0.45,
-        "input_size": 640,
-        "grid_zone_size_m": 50,
-        "export_format": ["csv", "json"],
-        "max_batch_size": 100
-    }
-
-config = load_config()
-
-# ─────────────────────────────────────────────
-# Model initialization
-# ─────────────────────────────────────────────
-MODEL_PATH = Path(__file__).parent.parent.parent / "model.onnx"
-inference_engine = None
-
-@app.on_event("startup")
-async def startup_event():
-    global inference_engine
-    if not MODEL_PATH.exists():
-        print(f"WARNING: model.onnx not found at {MODEL_PATH}")
-        print("Place model.onnx in the repo root directory")
-        return
-    inference_engine = RescueVisionInference(
-        model_path=str(MODEL_PATH),
-        conf_threshold=config["conf_threshold"],
-        iou_threshold=config["iou_threshold"],
-        input_size=config["input_size"]
-    )
-    print(f"Model loaded: {MODEL_PATH}")
-    print(f"Provider: {inference_engine.providers}")
-
-# ─────────────────────────────────────────────
-# Routes
-# ─────────────────────────────────────────────
-
-@app.get("/health")
-async def health_check():
-    """System health check — includes model status and active config."""
-    return {
-        "status": "ok",
-        "model_loaded": inference_engine is not None,
-        "model_path": str(MODEL_PATH),
-        "config": config,
-        "providers": inference_engine.providers if inference_engine else None
-    }
+import cv2
+import numpy as np
+import onnxruntime as ort
 
 
-@app.post("/detect", response_model=DetectionResult)
-async def detect_single(
-    file: UploadFile = File(...),
-    manual_lat: Optional[float] = None,
-    manual_lon: Optional[float] = None,
-    manual_altitude: Optional[float] = 80.0
-):
-    """
-    Detect victims in a single drone image.
-    
-    - Reads GPS EXIF from DJI photos automatically
-    - Falls back to manual_lat/manual_lon if no EXIF found
-    - Returns bounding boxes + GPS coordinates per victim
-    """
-    if inference_engine is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Check model.onnx path.")
+class RescueVisionInference:
+    def __init__(
+        self,
+        model_path: str,
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        input_size: int = 640,
+    ) -> None:
+        self.model_path = model_path
+        self.conf_threshold = conf_threshold
+        self.iou_threshold = iou_threshold
+        self.input_size = input_size
 
-    # Save uploaded file to temp
-    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
+        available = ort.get_available_providers()
+        preferred = ["CPUExecutionProvider"]
+        self.providers = [p for p in preferred if p in available] or available
 
-    try:
-        # Run inference
-        detections, inference_ms, img_w, img_h = inference_engine.run(tmp_path)
+        self.session = ort.InferenceSession(self.model_path, providers=self.providers)
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_name = self.session.get_outputs()[0].name
 
-        # Extract GPS from EXIF (DJI photos)
-        exif_gps = extract_exif_gps(tmp_path)
+    def update_config(self, conf_threshold: float, iou_threshold: float, input_size: int) -> None:
+        self.conf_threshold = conf_threshold
+        self.iou_threshold = iou_threshold
+        self.input_size = input_size
 
-        # Determine reference GPS point
-        if exif_gps:
-            ref_lat = exif_gps["lat"]
-            ref_lon = exif_gps["lon"]
-            ref_alt = exif_gps.get("altitude", manual_altitude or 80.0)
-            gps_source = "exif"
-        elif manual_lat and manual_lon:
-            ref_lat = manual_lat
-            ref_lon = manual_lon
-            ref_alt = manual_altitude or 80.0
-            gps_source = "manual"
-        else:
-            ref_lat = None
-            ref_lon = None
-            ref_alt = None
-            gps_source = "none"
+    def run(self, image_path: str) -> Tuple[List[Dict], float, int, int]:
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Failed to read image: {image_path}")
 
-        # Calculate victim coordinates
-        enriched = []
-        for i, det in enumerate(detections):
-            victim = {
-                "id": i + 1,
-                "confidence": round(det["confidence"], 3),
-                "bbox": det["box"],
-                "cx_rel": det["cx_rel"],
-                "cy_rel": det["cy_rel"],
-            }
-            if ref_lat and ref_lon:
-                coords = calculate_victim_coordinates(
-                    ref_lat, ref_lon, ref_alt,
-                    det["cx_rel"], det["cy_rel"],
-                    img_w, img_h
-                )
-                victim["lat"] = round(coords["lat"], 7)
-                victim["lon"] = round(coords["lon"], 7)
-                victim["accuracy_m"] = coords["accuracy_m"]
+        img_h, img_w = image.shape[:2]
+        blob, gain, pad_w, pad_h = self._preprocess(image)
+
+        start = time.perf_counter()
+        output = self.session.run([self.output_name], {self.input_name: blob})[0]
+        inference_ms = (time.perf_counter() - start) * 1000.0
+
+        detections = self._postprocess(output, gain, pad_w, pad_h, img_w, img_h)
+        return detections, inference_ms, img_w, img_h
+
+    def _preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
+        h, w = image.shape[:2]
+        target = self.input_size
+
+        gain = min(target / w, target / h)
+        new_w, new_h = int(round(w * gain)), int(round(h * gain))
+
+        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        canvas = np.full((target, target, 3), 114, dtype=np.uint8)
+        pad_w = (target - new_w) // 2
+        pad_h = (target - new_h) // 2
+        canvas[pad_h:pad_h + new_h, pad_w:pad_w + new_w] = resized
+
+        rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        blob = rgb.astype(np.float32) / 255.0
+        blob = np.transpose(blob, (2, 0, 1))
+        blob = np.expand_dims(blob, axis=0)
+        return blob, gain, pad_w, pad_h
+
+    def _postprocess(
+        self,
+        raw_output: np.ndarray,
+        gain: float,
+        pad_w: int,
+        pad_h: int,
+        orig_w: int,
+        orig_h: int,
+    ) -> List[Dict]:
+        preds = np.squeeze(raw_output)
+        if preds.ndim == 1:
+            preds = np.expand_dims(preds, axis=0)
+
+        # Normalize shape to [num_boxes, num_attrs]
+        if preds.ndim == 2 and preds.shape[0] < preds.shape[1]:
+            if preds.shape[0] <= 85:
+                preds = preds.T
+        elif preds.ndim != 2:
+            return []
+
+        boxes_xyxy: List[List[float]] = []
+        scores: List[float] = []
+        rel_centers: List[Tuple[float, float]] = []
+
+        for row in preds:
+            if row.shape[0] < 5:
+                continue
+
+            x, y, w, h = row[:4]
+            cls_scores = row[4:]
+
+            if cls_scores.size == 1:
+                score = float(cls_scores[0])
             else:
-                victim["lat"] = None
-                victim["lon"] = None
-                victim["accuracy_m"] = None
-            enriched.append(victim)
+                score = float(np.max(cls_scores))
 
-        return DetectionResult(
-            filename=file.filename,
-            total_victims=len(enriched),
-            detections=enriched,
-            inference_ms=round(inference_ms, 1),
-            image_size={"width": img_w, "height": img_h},
-            gps_source=gps_source,
-            ref_coords={"lat": ref_lat, "lon": ref_lon, "altitude": ref_alt}
-        )
+            if score < self.conf_threshold:
+                continue
 
-    finally:
-        os.unlink(tmp_path)
+            x1 = float(x - w / 2.0)
+            y1 = float(y - h / 2.0)
+            x2 = float(x + w / 2.0)
+            y2 = float(y + h / 2.0)
 
+            # Undo letterbox padding and scaling.
+            x1 = (x1 - pad_w) / gain
+            y1 = (y1 - pad_h) / gain
+            x2 = (x2 - pad_w) / gain
+            y2 = (y2 - pad_h) / gain
 
-@app.post("/detect/batch", response_model=BatchResult)
-async def detect_batch(
-    files: list[UploadFile] = File(...),
-    manual_lat: Optional[float] = None,
-    manual_lon: Optional[float] = None
-):
-    """Process multiple drone images in batch."""
-    if len(files) > config["max_batch_size"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Max batch size is {config['max_batch_size']} images"
-        )
+            x1 = max(0.0, min(x1, float(orig_w - 1)))
+            y1 = max(0.0, min(y1, float(orig_h - 1)))
+            x2 = max(0.0, min(x2, float(orig_w - 1)))
+            y2 = max(0.0, min(y2, float(orig_h - 1)))
 
-    results = []
-    total_victims = 0
+            if x2 <= x1 or y2 <= y1:
+                continue
 
-    for f in files:
-        result = await detect_single(f, manual_lat, manual_lon)
-        results.append(result)
-        total_victims += result.total_victims
+            boxes_xyxy.append([x1, y1, x2, y2])
+            scores.append(score)
 
-    return BatchResult(
-        total_images=len(files),
-        total_victims=total_victims,
-        results=results
-    )
+            cx = ((x1 + x2) / 2.0) / float(orig_w)
+            cy = ((y1 + y2) / 2.0) / float(orig_h)
+            rel_centers.append((cx, cy))
 
+        if not boxes_xyxy:
+            return []
 
-@app.post("/inject")
-async def dynamic_injection(inject: InjectConfig):
-    """
-    Dynamic Injection endpoint — Tahap 3 mechanism.
-    Panitia can update any config parameter at runtime.
-    """
-    global config, inference_engine
+        nms_boxes = [[b[0], b[1], b[2] - b[0], b[3] - b[1]] for b in boxes_xyxy]
+        kept = cv2.dnn.NMSBoxes(nms_boxes, scores, self.conf_threshold, self.iou_threshold)
 
-    updated = {}
-    for key, value in inject.parameters.items():
-        if key in config:
-            old_val = config[key]
-            config[key] = value
-            updated[key] = {"from": old_val, "to": value}
+        if kept is None or len(kept) == 0:
+            return []
 
-    # Re-initialize inference engine if threshold changed
-    if any(k in updated for k in ["conf_threshold", "iou_threshold", "input_size"]):
-        if inference_engine:
-            inference_engine.update_config(
-                conf_threshold=config["conf_threshold"],
-                iou_threshold=config["iou_threshold"],
-                input_size=config["input_size"]
+        detections: List[Dict] = []
+        for idx in np.array(kept).reshape(-1).tolist():
+            x1, y1, x2, y2 = boxes_xyxy[idx]
+            cx_rel, cy_rel = rel_centers[idx]
+            detections.append(
+                {
+                    "confidence": round(float(scores[idx]), 4),
+                    "box": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
+                    "cx_rel": float(np.clip(cx_rel, 0.0, 1.0)),
+                    "cy_rel": float(np.clip(cy_rel, 0.0, 1.0)),
+                }
             )
 
-    # Persist config
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
-
-    return {
-        "status": "updated",
-        "updated_params": updated,
-        "current_config": config
-    }
-
-
-@app.get("/export/csv")
-async def export_csv():
-    """Export all detected victim coordinates as CSV."""
-    # In production, this reads from session storage
-    # For demo, returns sample format
-    csv_path = Path("detections_export.csv")
-    if not csv_path.exists():
-        raise HTTPException(status_code=404, detail="No detections to export yet")
-    return FileResponse(csv_path, media_type="text/csv", filename="rescuevision_detections.csv")
-
-
-if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+        detections.sort(key=lambda d: d["confidence"], reverse=True)
+        return detections
