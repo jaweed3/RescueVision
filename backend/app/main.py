@@ -11,11 +11,15 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import json
+import logging
 import os
+from collections import deque
 from pathlib import Path
 from typing import Optional
 import tempfile
 import shutil
+
+logger = logging.getLogger(__name__)
 
 from app.inference import RescueVisionInference
 from app.gps import extract_exif_gps, calculate_victim_coordinates
@@ -61,8 +65,10 @@ def load_config():
                 loaded = json.load(f) or {}
             if isinstance(loaded, dict):
                 config.update(loaded)
-        except Exception:
-            pass
+        except json.JSONDecodeError as e:
+            logger.warning("config.json is invalid JSON (%s) — using defaults", e)
+        except OSError as e:
+            logger.warning("Could not read config.json (%s) — using defaults", e)
     return config
 
 config = load_config()
@@ -96,7 +102,7 @@ async def startup_event():
 # ─────────────────────────────────────────────
 # Storage for export
 # ─────────────────────────────────────────────
-DETECTIONS_LOG = []
+DETECTIONS_LOG: deque = deque(maxlen=10_000)
 
 @app.get("/health")
 async def health_check():
@@ -223,19 +229,39 @@ async def detect_batch(
 
 @app.post("/inject")
 async def dynamic_injection(inject: InjectConfig):
-    """Update config dynamically."""
+    """
+    Dynamic Injection endpoint — Tahap 3 mechanism.
+    Panitia can update any config parameter at runtime.
+    Changes are persisted to config.json so they survive restarts.
+    """
     global config, inference_engine
+
+    updated = {}
     for key, value in inject.parameters.items():
         if key in config:
+            old_val = config[key]
             config[key] = value
+            updated[key] = {"from": old_val, "to": value}
 
-    if inference_engine:
-        inference_engine.update_config(
-            conf_threshold=config["conf_threshold"],
-            iou_threshold=config["iou_threshold"],
-            input_size=config["input_size"]
-        )
-    return {"status": "ok", "config": config}
+    if any(k in updated for k in ["conf_threshold", "iou_threshold", "input_size"]):
+        if inference_engine:
+            inference_engine.update_config(
+                conf_threshold=config["conf_threshold"],
+                iou_threshold=config["iou_threshold"],
+                input_size=config["input_size"]
+            )
+
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=2)
+    except OSError as e:
+        logger.warning("Could not persist config.json (%s) — changes are in-memory only", e)
+
+    return {
+        "status": "updated",
+        "updated_params": updated,
+        "current_config": config
+    }
 
 
 @app.get("/export/csv")

@@ -105,6 +105,42 @@ python scripts/verify_split.py
 
 ## Menjalankan Aplikasi (Frontend + Backend)
 
+Ada dua cara: **Docker** (direkomendasikan) atau **2 terminal terpisah**.
+
+### Cara 1: Docker Compose
+
+Pastikan `model.onnx` sudah ada di root repo (salin dari `model/best.onnx` jika perlu):
+
+```bash
+cp model/best.onnx model.onnx
+```
+
+Jalankan semua service:
+
+```bash
+docker compose up --build
+```
+
+| Service  | URL                         |
+| -------- | --------------------------- |
+| Frontend | http://localhost:3000       |
+| Backend  | http://localhost:8000       |
+| API Docs | http://localhost:8000/docs  |
+
+Volume yang di-mount otomatis oleh docker-compose:
+- `./backend/config.json` → `/app/config.json` (konfigurasi runtime)
+- `model.onnx` harus ada di root repo sebelum build (dibaca saat startup)
+
+Menghentikan:
+
+```bash
+docker compose down
+```
+
+---
+
+### Cara 2: 2 Terminal Terpisah
+
 Jalankan di 2 terminal terpisah.
 
 ### 1) Nyalakan Backend (FastAPI)
