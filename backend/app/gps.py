@@ -96,8 +96,8 @@ def calculate_victim_coordinates(
     """
     Calculate victim coordinates using the formula from Proposal Bab 4.1.3:
     GSD = (sensor_width * altitude) / (focal_length * image_width)
-    dx_m = (bbox_cx - img_w/2) * GSD
-    dy_m = (img_h/2 - bbox_cy) * GSD
+    dx_m = (bbox_cx - img_width/2) * GSD
+    dy_m = (img_height/2 - bbox_cy) * GSD
     Target Lat = drone_lat + (dy_m / 111320)
     Target Lon = drone_lon + (dx_m / (111320 * cos(drone_lat)))
     """
