@@ -30,20 +30,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS — allow React dev server
+# CORS — allow all origins for Edge tool accessibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:8000",
-    ],
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,15 +93,18 @@ async def startup_event():
 # Routes
 # ─────────────────────────────────────────────
 
+# ─────────────────────────────────────────────
+# Storage for export
+# ─────────────────────────────────────────────
+DETECTIONS_LOG = []
+
 @app.get("/health")
 async def health_check():
-    """System health check — includes model status and active config."""
+    """System health check — exactly as requested."""
     return {
         "status": "ok",
         "model_loaded": inference_engine is not None,
-        "model_path": str(MODEL_PATH),
-        "config": config,
-        "providers": inference_engine.providers if inference_engine else None
+        "provider": inference_engine.providers if inference_engine else ["CPUExecutionProvider"]
     }
 
 
@@ -124,48 +117,38 @@ async def detect_single(
 ):
     """
     Detect victims in a single drone image.
-    
-    - Reads GPS EXIF from DJI photos automatically
-    - Falls back to manual_lat/manual_lon if no EXIF found
-    - Returns bounding boxes + GPS coordinates per victim
     """
     if inference_engine is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Check model.onnx path.")
+        raise HTTPException(status_code=503, detail="Model not loaded.")
 
-    # Save uploaded file to temp
     with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
 
     try:
-        # Run inference
         detections, inference_ms, img_w, img_h = inference_engine.run(tmp_path)
-
-        # Extract GPS from EXIF (DJI photos)
         exif_gps = extract_exif_gps(tmp_path)
 
-        # Determine reference GPS point
         if exif_gps:
             ref_lat = exif_gps["lat"]
             ref_lon = exif_gps["lon"]
             ref_alt = exif_gps.get("altitude", manual_altitude or 80.0)
+            focal = exif_gps.get("focal_length", 4.5)
             gps_source = "exif"
         elif manual_lat and manual_lon:
             ref_lat = manual_lat
             ref_lon = manual_lon
             ref_alt = manual_altitude or 80.0
+            focal = 4.5
             gps_source = "manual"
         else:
-            ref_lat = None
-            ref_lon = None
-            ref_alt = None
+            ref_lat, ref_lon, ref_alt, focal = None, None, None, 4.5
             gps_source = "none"
 
-        # Calculate victim coordinates
         enriched = []
         for i, det in enumerate(detections):
             victim = {
-                "id": i + 1,
+                "id": len(DETECTIONS_LOG) + i + 1,
                 "confidence": round(det["confidence"], 3),
                 "bbox": det["box"],
                 "cx_rel": det["cx_rel"],
@@ -174,12 +157,21 @@ async def detect_single(
             if ref_lat and ref_lon:
                 coords = calculate_victim_coordinates(
                     ref_lat, ref_lon, ref_alt,
-                    det["cx_rel"], det["cy_rel"],
-                    img_w, img_h
+                    det["cx_rel"] * img_w, det["cy_rel"] * img_h,
+                    img_w, img_h,
+                    focal_length=focal
                 )
                 victim["lat"] = round(coords["lat"], 7)
                 victim["lon"] = round(coords["lon"], 7)
                 victim["accuracy_m"] = coords["accuracy_m"]
+                
+                # Log for export
+                DETECTIONS_LOG.append({
+                    "filename": file.filename,
+                    "lat": victim["lat"],
+                    "lon": victim["lon"],
+                    "confidence": victim["confidence"]
+                })
             else:
                 victim["lat"] = None
                 victim["lon"] = None
@@ -204,7 +196,8 @@ async def detect_single(
 async def detect_batch(
     files: list[UploadFile] = File(...),
     manual_lat: Optional[float] = None,
-    manual_lon: Optional[float] = None
+    manual_lon: Optional[float] = None,
+    manual_altitude: Optional[float] = 80.0
 ):
     """Process multiple drone images in batch."""
     if len(files) > config["max_batch_size"]:
@@ -217,7 +210,7 @@ async def detect_batch(
     total_victims = 0
 
     for f in files:
-        result = await detect_single(f, manual_lat, manual_lon)
+        result = await detect_single(f, manual_lat, manual_lon, manual_altitude)
         results.append(result)
         total_victims += result.total_victims
 
@@ -230,48 +223,39 @@ async def detect_batch(
 
 @app.post("/inject")
 async def dynamic_injection(inject: InjectConfig):
-    """
-    Dynamic Injection endpoint — Tahap 3 mechanism.
-    Panitia can update any config parameter at runtime.
-    """
+    """Update config dynamically."""
     global config, inference_engine
-
-    updated = {}
     for key, value in inject.parameters.items():
         if key in config:
-            old_val = config[key]
             config[key] = value
-            updated[key] = {"from": old_val, "to": value}
 
-    # Re-initialize inference engine if threshold changed
-    if any(k in updated for k in ["conf_threshold", "iou_threshold", "input_size"]):
-        if inference_engine:
-            inference_engine.update_config(
-                conf_threshold=config["conf_threshold"],
-                iou_threshold=config["iou_threshold"],
-                input_size=config["input_size"]
-            )
-
-    # Persist config
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
-
-    return {
-        "status": "updated",
-        "updated_params": updated,
-        "current_config": config
-    }
+    if inference_engine:
+        inference_engine.update_config(
+            conf_threshold=config["conf_threshold"],
+            iou_threshold=config["iou_threshold"],
+            input_size=config["input_size"]
+        )
+    return {"status": "ok", "config": config}
 
 
 @app.get("/export/csv")
 async def export_csv():
-    """Export all detected victim coordinates as CSV."""
-    # In production, this reads from session storage
-    # For demo, returns sample format
-    csv_path = Path("detections_export.csv")
-    if not csv_path.exists():
-        raise HTTPException(status_code=404, detail="No detections to export yet")
-    return FileResponse(csv_path, media_type="text/csv", filename="rescuevision_detections.csv")
+    """Export all detected victim coordinates."""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["filename", "lat", "lon", "confidence"])
+    writer.writeheader()
+    writer.writerows(DETECTIONS_LOG)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=victims.csv"}
+    )
 
 
 if __name__ == "__main__":
