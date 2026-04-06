@@ -103,6 +103,107 @@ python scripts/verify_split.py
 
 ---
 
+## Menjalankan Aplikasi (Frontend + Backend)
+
+Ada dua cara: **Docker** (direkomendasikan) atau **2 terminal terpisah**.
+
+### Cara 1: Docker Compose
+
+Pastikan `model.onnx` sudah ada di root repo (salin dari `model/best.onnx` jika perlu):
+
+```bash
+cp model/best.onnx model.onnx
+```
+
+Jalankan semua service:
+
+```bash
+docker compose up --build
+```
+
+| Service  | URL                         |
+| -------- | --------------------------- |
+| Frontend | http://localhost:3000       |
+| Backend  | http://localhost:8000       |
+| API Docs | http://localhost:8000/docs  |
+
+Volume yang di-mount otomatis oleh docker-compose:
+- `./backend/config.json` → `/app/config.json` (konfigurasi runtime)
+- `model.onnx` harus ada di root repo sebelum build (dibaca saat startup)
+
+Menghentikan:
+
+```bash
+docker compose down
+```
+
+---
+
+### Cara 2: 2 Terminal Terpisah
+
+Jalankan di 2 terminal terpisah.
+
+### 1) Nyalakan Backend (FastAPI)
+
+```bash
+cd backend
+conda activate mlenv
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Backend aktif di:
+- http://localhost:8000
+- http://localhost:8000/docs
+
+Catatan model:
+- Backend membaca model dari root project dengan nama `model.onnx`.
+- Jika model Anda berada di `model/best.onnx`, salin dulu:
+
+```bash
+cp model/best.onnx model.onnx
+```
+
+### 2) Nyalakan Frontend (React + Vite)
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Frontend aktif di:
+- http://localhost:5173
+- jika port 5173 terpakai, Vite akan pindah ke port lain (misalnya 5174)
+
+---
+
+## Mematikan Aplikasi
+
+### Cara normal
+
+- Tekan `Ctrl + C` pada terminal backend.
+- Tekan `Ctrl + C` pada terminal frontend.
+
+### Jika proses masih jalan di background
+
+```bash
+# Cek proses yang memakai port backend
+fuser -n tcp 8000
+
+# Cek proses yang memakai port frontend (5173 atau 5174)
+fuser -n tcp 5173
+fuser -n tcp 5174
+```
+
+Jika ingin menghentikan proses berdasarkan PID (angka yang keluar dari `fuser`):
+
+```bash
+kill <PID>
+```
+
+---
+
 ## Training
 
 Buka `notebooks/training.ipynb` dan jalankan semua sel secara berurutan.
