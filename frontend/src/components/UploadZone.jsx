@@ -1,6 +1,12 @@
 import { useRef, useState } from 'react'
 import './UploadZone.css'
 
+const UploadIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="upload-svg">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+)
+
 export default function UploadZone({ onUpload, loading }) {
   const inputRef = useRef()
   const [dragging, setDragging] = useState(false)
@@ -12,7 +18,7 @@ export default function UploadZone({ onUpload, loading }) {
     const valid = ['image/jpeg', 'image/png', 'image/jpg']
     const invalid = files.filter((f) => !valid.includes(f.type))
     if (invalid.length > 0) {
-      alert('Sebagian file tidak didukung. Gunakan hanya JPG atau PNG.')
+      alert('Format file tidak didukung. Gunakan JPG atau PNG.')
       return
     }
 
@@ -42,13 +48,25 @@ export default function UploadZone({ onUpload, loading }) {
         onChange={e => handleFiles(e.target.files)}
       />
       {loading ? (
-        <p>Memproses...</p>
+        <div className="upload-loading">
+          <div className="mini-spinner" />
+          <p>Memproses file...</p>
+        </div>
       ) : (
         <>
-          <span>📷</span>
-          <p>Drag & drop foto drone (multi-file)</p>
-          <small>atau klik untuk pilih banyak file (JPG/PNG)</small>
-          <small className="hint-dji">Foto DJI: GPS koordinat otomatis terbaca</small>
+          <div className="icon-circle">
+            <UploadIcon />
+          </div>
+          <div className="text-content">
+            <p className="main-text">Drag & drop foto drone</p>
+            <p className="sub-text">atau klik untuk pilih banyak file (JPG/PNG)</p>
+          </div>
+          <div className="dji-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '12px' }}>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span>Auto-detect GPS (DJI Exif)</span>
+          </div>
         </>
       )}
     </div>
