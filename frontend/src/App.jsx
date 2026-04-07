@@ -6,7 +6,7 @@ import UploadZone from './components/UploadZone'
 import StatusBar from './components/StatusBar'
 import './App.css'
 
-const API = import.meta.env.PROD ? '/api' : 'http://localhost:8000'
+const API = import.meta.env.PROD ? 'https://api-rescue-vision-edge.utc.web.id' : 'http://localhost:1150'
 
 export default function App() {
   const [singleResult, setSingleResult] = useState(null)

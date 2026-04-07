@@ -6,10 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/detect': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
-      '/inject': 'http://localhost:8000',
-      '/export': 'http://localhost:8000',
+      '/detect': 'http://localhost:1150',
+      '/health': 'http://localhost:1150',
+      '/inject': 'http://localhost:1150',
+      '/export': 'http://localhost:1150',
     }
   }
 })
