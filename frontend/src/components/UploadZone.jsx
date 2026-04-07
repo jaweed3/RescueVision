@@ -15,12 +15,12 @@ export default function UploadZone({ onUpload, loading }) {
     const files = Array.from(fileList || [])
     if (!files.length) return
 
-    const valid = ['image/jpeg', 'image/png', 'image/jpg']
-    const invalid = files.filter((f) => !valid.includes(f.type))
-    if (invalid.length > 0) {
-      alert('Format file tidak didukung. Gunakan JPG atau PNG.')
-      return
-    }
+    //const valid = ['image/jpeg', 'image/png', 'image/jpg']
+    //const invalid = files.filter((f) => !valid.includes(f.type))
+    //if (invalid.length > 0) {
+    //  alert('Format file tidak didukung. Gunakan JPG atau PNG.')
+    //  return
+    //}
 
     onUpload(files)
   }
