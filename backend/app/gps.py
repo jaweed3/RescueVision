@@ -66,13 +66,34 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
             logger.warning("[EXIF] DMS parse failed — lat=%s lon=%s (raw: %s %s)", lat, lon, lat_raw, lon_raw)
             return None
 
+        # Detect GPS method — 'network' means cell tower/WiFi (ASL altitude, not AGL)
+        gps_method = gps.get("GPSProcessingMethod", "")
+        if isinstance(gps_method, bytes):
+            gps_method = gps_method.decode("utf-8", errors="ignore")
+        gps_method = gps_method.strip().lower()
+        is_network_gps = gps_method in ("network", "wlan", "wifi", "cell")
+
+        if is_network_gps:
+            logger.warning(
+                "[EXIF] GPSProcessingMethod='%s' — altitude from EXIF is ASL (above sea level), "
+                "NOT flight altitude (AGL). Will NOT use for GSD calculation to avoid wrong coordinates.",
+                gps_method
+            )
+
         # Parse altitude
         altitude = None
+        altitude_is_agl = not is_network_gps  # network GPS = ASL, drone GPS = AGL
         alt_raw = gps.get("GPSAltitude")
         if alt_raw:
             try:
                 altitude = float(alt_raw)
-                logger.debug("[EXIF] GPSAltitude parsed: %.2f m", altitude)
+                if is_network_gps:
+                    logger.debug(
+                        "[EXIF] GPSAltitude raw=%.2f m (ASL — ignored for GSD, fallback to manual/default)",
+                        altitude
+                    )
+                else:
+                    logger.debug("[EXIF] GPSAltitude parsed: %.2f m (AGL — will use for GSD)", altitude)
             except Exception as e:
                 logger.warning("[EXIF] Could not parse GPSAltitude (%s): %s — using default 80m", alt_raw, e)
                 altitude = 80.0
@@ -88,10 +109,14 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
             "lat": lat,
             "lon": lon,
             "altitude": altitude or 80.0,
+            "altitude_is_agl": altitude_is_agl,
+            "gps_method": gps_method or "gps",
             "focal_length": float(focal_length)
         }
-        logger.info("[EXIF] GPS extracted successfully: lat=%.6f lon=%.6f alt=%.1fm focal=%.2fmm",
-                    lat, lon, result["altitude"], result["focal_length"])
+        logger.info(
+            "[EXIF] GPS extracted: lat=%.6f lon=%.6f alt=%.1fm (agl=%s method=%s) focal=%.2fmm",
+            lat, lon, result["altitude"], altitude_is_agl, result["gps_method"], result["focal_length"]
+        )
         return result
 
     except Exception as e:

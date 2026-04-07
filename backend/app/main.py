@@ -160,13 +160,29 @@ async def detect_single(
         if exif_gps:
             ref_lat = exif_gps["lat"]
             ref_lon = exif_gps["lon"]
-            ref_alt = exif_gps.get("altitude", manual_altitude or 80.0)
             focal = exif_gps.get("focal_length", 4.5)
             gps_source = "exif"
-            logger.info(
-                "[GPS] Source=EXIF | lat=%.6f lon=%.6f alt=%.1fm focal=%.2fmm",
-                ref_lat, ref_lon, ref_alt, focal
-            )
+
+            altitude_is_agl = exif_gps.get("altitude_is_agl", True)
+            gps_method = exif_gps.get("gps_method", "gps")
+
+            if altitude_is_agl:
+                # Drone GPS — altitude is height above ground, safe to use for GSD
+                ref_alt = exif_gps.get("altitude", manual_altitude or 80.0)
+                logger.info(
+                    "[GPS] Source=EXIF (method=%s) | lat=%.6f lon=%.6f alt=%.1fm (AGL) focal=%.2fmm",
+                    gps_method, ref_lat, ref_lon, ref_alt, focal
+                )
+            else:
+                # Network/WiFi GPS — altitude is ASL, would break GSD calculation
+                # Use manual_altitude if provided, else default 80m
+                ref_alt = manual_altitude if manual_altitude and manual_altitude != 80.0 else 80.0
+                logger.warning(
+                    "[GPS] Source=EXIF (method=%s) | lat=%.6f lon=%.6f | "
+                    "EXIF altitude=%.1fm is ASL — using %.1fm for GSD instead. "
+                    "Set manual_altitude for accurate results.",
+                    gps_method, ref_lat, ref_lon, exif_gps.get("altitude", 0), ref_alt
+                )
         elif manual_lat and manual_lon:
             ref_lat = manual_lat
             ref_lon = manual_lon

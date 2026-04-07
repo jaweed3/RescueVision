@@ -43,6 +43,8 @@ export default function App() {
   const [error, setError] = useState(null)
   const [manualGPS, setManualGPS] = useState({ lat: '', lon: '', alt: '80' })
   const [useManualGPS, setUseManualGPS] = useState(false)
+  const [geolocating, setGeolocating] = useState(false)
+  const [geoError, setGeoError] = useState(null)
   const [previewUrls, setPreviewUrls] = useState([])
   const [systemStatus, setSystemStatus] = useState(null)
 
@@ -91,6 +93,32 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleDeviceGPS = () => {
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation tidak didukung browser ini.')
+      return
+    }
+    setGeolocating(true)
+    setGeoError(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, altitude } = pos.coords
+        setManualGPS({
+          lat: latitude.toFixed(6),
+          lon: longitude.toFixed(6),
+          alt: altitude ? altitude.toFixed(1) : '80'
+        })
+        setUseManualGPS(true)
+        setGeolocating(false)
+      },
+      (err) => {
+        setGeoError(`GPS gagal: ${err.message}`)
+        setGeolocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
   }
 
   const handleExport = () => window.open(`${API}/export/csv`, '_blank')
@@ -147,7 +175,19 @@ export default function App() {
                 <input type="checkbox" checked={useManualGPS} onChange={e => setUseManualGPS(e.target.checked)} />
                 <span>Override GPS Exif</span>
               </label>
-              
+
+              <button
+                className="btn-device-gps"
+                onClick={handleDeviceGPS}
+                disabled={geolocating}
+                title="Gunakan GPS perangkat ini sebagai koordinat referensi"
+              >
+                <Icons.GPS />
+                {geolocating ? 'Mengambil lokasi...' : 'Use Device GPS'}
+              </button>
+
+              {geoError && <p className="field-hint field-hint--error">{geoError}</p>}
+
               {useManualGPS && (
                 <div className="gps-grid">
                   <div className="field">
@@ -159,12 +199,17 @@ export default function App() {
                     <input type="number" step="0.000001" placeholder="110.45..." value={manualGPS.lon} onChange={e => setManualGPS(p => ({ ...p, lon: e.target.value }))} />
                   </div>
                   <div className="field full">
-                    <label>Altitude (m)</label>
+                    <label>Altitude terbang (m AGL)</label>
                     <input type="number" placeholder="80" value={manualGPS.alt} onChange={e => setManualGPS(p => ({ ...p, alt: e.target.value }))} />
                   </div>
                 </div>
               )}
-              {!useManualGPS && <p className="field-hint">Reading coordinates from DJI EXIF metadata automatically.</p>}
+              {!useManualGPS && !manualGPS.lat && <p className="field-hint">Reading coordinates from DJI EXIF metadata automatically.</p>}
+              {useManualGPS && manualGPS.lat && (
+                <p className="field-hint">
+                  Koordinat: {parseFloat(manualGPS.lat).toFixed(5)}, {parseFloat(manualGPS.lon).toFixed(5)} | Alt: {manualGPS.alt}m
+                </p>
+              )}
             </div>
           </div>
 
