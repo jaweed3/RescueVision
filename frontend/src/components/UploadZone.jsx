@@ -43,7 +43,6 @@ export default function UploadZone({ onUpload, loading }) {
         ref={inputRef}
         type="file"
         multiple
-        accept="image/jpeg,image/jpg,image/png"
         style={{ display: 'none' }}
         onChange={e => handleFiles(e.target.files)}
       />
