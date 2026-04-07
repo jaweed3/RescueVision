@@ -222,7 +222,13 @@ body {
 .checkbox-field input { accent-color: var(--accent); width: 1rem; height: 1rem; }
 .gps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .gps-grid .full { grid-column: span 2; }
-.field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+@media (max-width: 340px) {
+  .gps-grid { grid-template-columns: 1fr; }
+  .gps-grid .full { grid-column: span 1; }
+}
+
+.field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
 .field label { font-size: 0.7rem; color: var(--text-dim); font-weight: 600; }
 .field input {
   background: var(--bg-input);
@@ -232,9 +238,10 @@ body {
   color: white;
   font-size: 0.85rem;
   outline: none;
+  width: 100%;
 }
 .field input:focus { border-color: var(--accent); }
-.field-hint { font-size: 0.7rem; color: var(--safe); font-weight: 500; }
+.field-hint { font-size: 0.7rem; color: var(--safe); font-weight: 500; overflow-wrap: break-word; }
 .field-hint--error { color: var(--critical); }
 
 .btn-device-gps {
