@@ -98,13 +98,34 @@ body {
   padding: 1rem;
 }
 
-.map-card {
-  min-height: 350px;
-  display: flex;
-  flex-direction: column;
+.map-section-wide {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-top: 1.5rem;
+  width: 100%;
 }
 
-.map-card .card-header { margin-bottom: 0.75rem; }
+.map-section-wide .card-header { margin-bottom: 1rem; }
+
+/* VictimMap container should have enough height now */
+.map-section-wide > div:last-child {
+  height: 500px !important;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .map-section-wide > div:last-child { height: 350px !important; }
+}
+
+.main-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
 
 .card-header-main {
   display: flex;

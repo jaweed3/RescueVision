@@ -124,7 +124,7 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {/* SIDEBAR (Left on PC, Top on Mobile) */}
+        {/* SIDEBAR (Left on PC) */}
         <aside className="app-sidebar">
           <div className="sidebar-card">
             <div className="card-header-main">
@@ -168,14 +168,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Map Section moved to Sidebar for Desktop View */}
-          {allDetections.some(d => d.lat) && (
-            <div className="sidebar-card map-card">
-              <div className="card-header"><Icons.GPS /> <h3>Geospatial Context</h3></div>
-              <VictimMap detections={allDetections} />
-            </div>
-          )}
-
           {allDetections.length > 0 && (
             <button className="btn-primary" onClick={handleExport}>
               <Icons.Export /> Export CSV Report
@@ -183,7 +175,7 @@ export default function App() {
           )}
         </aside>
 
-        {/* CONTENT AREA (Right on PC, Bottom on Mobile) */}
+        {/* CONTENT AREA (Main Visualization) */}
         <section className="app-content">
           {error && <div className="alert-error"><strong>System Error:</strong> {error}</div>}
 
@@ -223,11 +215,20 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Grid foto yang diunggah */}
               <div className="visualization-grid">
                 {results.map((item, idx) => (
                   <DetectionResult key={`${item.filename}-${idx}`} result={item} previewUrl={previewUrls[idx]} />
                 ))}
               </div>
+
+              {/* Peta diletakkan di bawah foto (Full Width) */}
+              {allDetections.some(d => d.lat) && (
+                <div className="main-card map-section-wide">
+                  <div className="card-header"><Icons.GPS /> <h3>Geospatial Context (Victim Map)</h3></div>
+                  <VictimMap detections={allDetections} />
+                </div>
+              )}
             </div>
           )}
         </section>
