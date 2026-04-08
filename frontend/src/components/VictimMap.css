@@ -1,0 +1,13 @@
+.victim-map-container {
+  border-radius: 12px;
+  overflow: hidden;
+  height: 400px;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 767px) {
+  .victim-map-container {
+    height: 300px;
+  }
+}

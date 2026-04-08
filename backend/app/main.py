@@ -161,6 +161,7 @@ async def detect_single(
             ref_lat = exif_gps["lat"]
             ref_lon = exif_gps["lon"]
             focal = exif_gps.get("focal_length", 4.5)
+            ref_heading = exif_gps.get("heading")
             gps_source = "exif"
 
             altitude_is_agl = exif_gps.get("altitude_is_agl", True)
@@ -170,8 +171,8 @@ async def detect_single(
                 # Drone GPS — altitude is height above ground, safe to use for GSD
                 ref_alt = exif_gps.get("altitude", manual_altitude or 80.0)
                 logger.info(
-                    "[GPS] Source=EXIF (method=%s) | lat=%.6f lon=%.6f alt=%.1fm (AGL) focal=%.2fmm",
-                    gps_method, ref_lat, ref_lon, ref_alt, focal
+                    "[GPS] Source=EXIF (method=%s) | lat=%.6f lon=%.6f alt=%.1fm (AGL) focal=%.2fmm heading=%s",
+                    gps_method, ref_lat, ref_lon, ref_alt, focal, ref_heading
                 )
             else:
                 # Network/WiFi GPS — altitude is ASL, would break GSD calculation
@@ -188,13 +189,14 @@ async def detect_single(
             ref_lon = manual_lon
             ref_alt = manual_altitude or 80.0
             focal = 4.5
+            ref_heading = None
             gps_source = "manual"
             logger.info(
                 "[GPS] Source=MANUAL | lat=%.6f lon=%.6f alt=%.1fm",
                 ref_lat, ref_lon, ref_alt
             )
         else:
-            ref_lat, ref_lon, ref_alt, focal = None, None, None, 4.5
+            ref_lat, ref_lon, ref_alt, focal, ref_heading = None, None, None, 4.5, None
             gps_source = "none"
             logger.warning(
                 "[GPS] Source=NONE — no EXIF GPS and no manual coords provided. "
@@ -216,7 +218,8 @@ async def detect_single(
                     ref_lat, ref_lon, ref_alt,
                     det["cx_rel"] * img_w, det["cy_rel"] * img_h,
                     img_w, img_h,
-                    focal_length=focal
+                    focal_length=focal,
+                    heading=ref_heading
                 )
                 victim["lat"] = round(coords["lat"], 7)
                 victim["lon"] = round(coords["lon"], 7)
@@ -333,19 +336,37 @@ async def export_csv():
     """Export all detected victim coordinates."""
     import csv
     import io
-    from fastapi.responses import StreamingResponse
+    from fastapi import Response
+
+    if not DETECTIONS_LOG:
+        # Return a CSV with just headers if no detections
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=["filename", "lat", "lon", "confidence"])
+        writer.writeheader()
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=victims.csv"}
+        )
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["filename", "lat", "lon", "confidence"])
     writer.writeheader()
-    writer.writerows(DETECTIONS_LOG)
+    # Convert deque to list to ensure compatibility
+    writer.writerows(list(DETECTIONS_LOG))
     
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
+    return Response(
+        content=output.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=victims.csv"}
     )
+
+
+@app.post("/export/clear")
+async def clear_logs():
+    """Clear the detections log."""
+    DETECTIONS_LOG.clear()
+    return {"status": "cleared", "total": 0}
 
 
 if __name__ == "__main__":

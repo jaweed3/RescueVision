@@ -122,11 +122,16 @@ export default function App() {
   }
 
   const handleExport = () => window.open(`${API}/export/csv`, '_blank')
+  const handleClear = async () => {
+    if (window.confirm('Hapus semua log deteksi di server?')) {
+      await axios.post(`${API}/export/clear`)
+      setSingleResult(null)
+      setBatchResult(null)
+    }
+  }
 
   const results = batchResult ? batchResult.results : (singleResult ? [singleResult] : [])
-  const allDetections = results.flatMap((r, i) => 
-    r.detections.map((d, j) => ({ ...d, id: i * 1000 + j + 1 }))
-  )
+  const allDetections = results.flatMap((r) => r.detections)
 
   const stats = {
     victims: batchResult ? batchResult.total_victims : (singleResult?.total_victims || 0),
@@ -214,9 +219,14 @@ export default function App() {
           </div>
 
           {allDetections.length > 0 && (
-            <button className="btn-primary" onClick={handleExport}>
-              <Icons.Export /> Export CSV Report
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button className="btn-primary" onClick={handleExport}>
+                <Icons.Export /> Export CSV Report
+              </button>
+              <button className="btn-device-gps" style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }} onClick={handleClear}>
+                Clear Session
+              </button>
+            </div>
           )}
         </aside>
 

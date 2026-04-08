@@ -84,9 +84,10 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
         altitude = None
         altitude_is_agl = not is_network_gps  # network GPS = ASL, drone GPS = AGL
         alt_raw = gps.get("GPSAltitude")
-        if alt_raw:
-            try:
-                altitude = float(alt_raw)
+        if alt_raw is not None:
+            parsed_alt = _convert_to_float(alt_raw)
+            if parsed_alt is not None:
+                altitude = parsed_alt
                 if is_network_gps:
                     logger.debug(
                         "[EXIF] GPSAltitude raw=%.2f m (ASL — ignored for GSD, fallback to manual/default)",
@@ -94,8 +95,8 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
                     )
                 else:
                     logger.debug("[EXIF] GPSAltitude parsed: %.2f m (AGL — will use for GSD)", altitude)
-            except Exception as e:
-                logger.warning("[EXIF] Could not parse GPSAltitude (%s): %s — using default 80m", alt_raw, e)
+            else:
+                logger.warning("[EXIF] Could not parse GPSAltitude (%s) — using default 80m", alt_raw)
                 altitude = 80.0
         else:
             logger.debug("[EXIF] GPSAltitude not present — using default 80m")
@@ -105,17 +106,30 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
         if isinstance(focal_length, tuple):
             focal_length = float(focal_length[0]) / float(focal_length[1])
 
+        # Heading (GPSImgDirection)
+        heading = _convert_to_float(gps.get("GPSImgDirection"))
+        if heading is None:
+            # Try to find DJI specific FlightYawDegree in all tags (often as a string)
+            for k, v in decoded.items():
+                if "FlightYawDegree" in str(k) or "GimbalYawDegree" in str(k):
+                    try:
+                        heading = float(v)
+                        break
+                    except:
+                        continue
+
         result = {
             "lat": lat,
             "lon": lon,
             "altitude": altitude or 80.0,
             "altitude_is_agl": altitude_is_agl,
             "gps_method": gps_method or "gps",
-            "focal_length": float(focal_length)
+            "focal_length": float(focal_length),
+            "heading": heading
         }
         logger.info(
-            "[EXIF] GPS extracted: lat=%.6f lon=%.6f alt=%.1fm (agl=%s method=%s) focal=%.2fmm",
-            lat, lon, result["altitude"], altitude_is_agl, result["gps_method"], result["focal_length"]
+            "[EXIF] GPS extracted: lat=%.6f lon=%.6f alt=%.1fm (agl=%s method=%s) focal=%.2fmm heading=%s",
+            lat, lon, result["altitude"], altitude_is_agl, result["gps_method"], result["focal_length"], heading
         )
         return result
 
@@ -124,15 +138,35 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
         return None
 
 
+def _convert_to_float(val) -> Optional[float]:
+    """Helper to convert Pillow Rational or tuple to float."""
+    if val is None:
+        return None
+    try:
+        if isinstance(val, (int, float)):
+            return float(val)
+        if hasattr(val, "numerator") and hasattr(val, "denominator"):
+            return float(val.numerator) / float(val.denominator)
+        if isinstance(val, (list, tuple)) and len(val) >= 2:
+            return float(val[0]) / float(val[1])
+        return float(val)
+    except (ZeroDivisionError, TypeError, ValueError):
+        return None
+
+
 def _dms_to_decimal(dms, ref) -> Optional[float]:
     """Convert DMS (degrees, minutes, seconds) to decimal degrees."""
     if dms is None or not isinstance(dms, (list, tuple)) or len(dms) < 3:
         return None
     try:
-        degrees = float(dms[0])
-        minutes = float(dms[1])
-        seconds = float(dms[2])
-        decimal = degrees + minutes / 60 + seconds / 3600
+        degrees = _convert_to_float(dms[0])
+        minutes = _convert_to_float(dms[1])
+        seconds = _convert_to_float(dms[2])
+        
+        if degrees is None or minutes is None or seconds is None:
+            return None
+            
+        decimal = degrees + minutes / 60.0 + seconds / 3600.0
         if ref in ["S", "W"]:
             decimal = -decimal
         return decimal
@@ -149,24 +183,44 @@ def calculate_victim_coordinates(
     img_width: int,
     img_height: int,
     focal_length: float = 4.5,
-    sensor_width: float = 6.17
+    sensor_width: float = 6.17,
+    heading: Optional[float] = None
 ) -> Dict:
     """
-    Calculate victim coordinates using the formula from Proposal Bab 4.1.3:
-    GSD = (sensor_width * altitude) / (focal_length * image_width)
-    dx_m = (bbox_cx - img_width/2) * GSD
-    dy_m = (img_height/2 - bbox_cy) * GSD
-    Target Lat = drone_lat + (dy_m / 111320)
-    Target Lon = drone_lon + (dx_m / (111320 * cos(drone_lat)))
+    Calculate victim coordinates using GSD and optional rotation from heading.
     """
-    # 1. GSD Calculation
+    # 1. GSD Calculation (meters per pixel)
     gsd = (sensor_width * altitude_m) / (focal_length * img_width)
 
-    # 2. Pixel Offset to Meters
-    dx_m = (bbox_cx - img_width / 2.0) * gsd
-    dy_m = (img_height / 2.0 - bbox_cy) * gsd
+    # 2. Pixel Offset from image center
+    # Image center is (img_width/2, img_height/2)
+    # dx_px: right is positive
+    # dy_px: up is positive (image Y increases downwards, so we negate)
+    dx_px = bbox_cx - (img_width / 2.0)
+    dy_px = (img_height / 2.0) - bbox_cy
 
-    # 3. Final GPS Coordinate
+    # 3. Offsets in Meters (relative to drone heading)
+    # If heading=0, dx_m is East, dy_m is North
+    dx_m_local = dx_px * gsd
+    dy_m_local = dy_px * gsd
+
+    # 4. Global Rotation based on Heading
+    # Most drone heading is degrees from True North (0=N, 90=E, 180=S, 270=W)
+    if heading is not None:
+        theta = math.radians(heading)
+        # Rotation Matrix:
+        # dx_global = dx_local*cos(theta) + dy_local*sin(theta)
+        # dy_global = -dx_local*sin(theta) + dy_local*cos(theta)
+        # Wait, if heading 0=North, dx_local=0, dy_local=1 => dx_global=0, dy_global=1 (Correct)
+        # If heading 90=East, dx_local=0, dy_local=1 => dx_global=1, dy_global=0 (Correct)
+        # Standard 2D rotation for East/North offsets:
+        dx_m = dx_m_local * math.cos(theta) + dy_m_local * math.sin(theta)
+        dy_m = -dx_m_local * math.sin(theta) + dy_m_local * math.cos(theta)
+    else:
+        dx_m = dx_m_local
+        dy_m = dy_m_local
+
+    # 5. Final GPS Coordinate
     # 1 degree latitude ≈ 111,320 m
     # 1 degree longitude ≈ 111,320 × cos(lat) m
     victim_lat = drone_lat + (dy_m / 111320.0)
