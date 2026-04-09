@@ -1,12 +1,9 @@
-import { useEffect, useState, useRef } from 'react'
-import axios from 'axios'
 import DetectionResult from './components/DetectionResult'
 import VictimMap from './components/VictimMap'
 import UploadZone from './components/UploadZone'
 import StatusBar from './components/StatusBar'
+import { useAppLogic } from './hooks/useAppLogic'
 import './App.css'
-
-const API = import.meta.env.PROD ? '/api' : 'http://localhost:8000'
 
 const Icons = {
   Logo: () => (
@@ -36,124 +33,17 @@ const Icons = {
   )
 }
 
+/**
+ * Main RescueVision Application Component
+ * Focuses purely on UI layout and presentation.
+ */
 export default function App() {
-  const [singleResult, setSingleResult] = useState(null)
-  const [batchResult, setBatchResult] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [manualGPS, setManualGPS] = useState({ lat: '', lon: '', alt: '80' })
-  const [useManualGPS, setUseManualGPS] = useState(false)
-  const [geolocating, setGeolocating] = useState(false)
-  const [geoError, setGeoError] = useState(null)
-  const [previewUrls, setPreviewUrls] = useState([])
-  const [systemStatus, setSystemStatus] = useState(null)
-
-  useEffect(() => {
-    const checkHealth = () => {
-      axios.get(`${API}/health`)
-        .then(r => setSystemStatus(r.data))
-        .catch(() => setSystemStatus({ status: 'error', model_loaded: false }))
-    }
-    checkHealth()
-    const interval = setInterval(checkHealth, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const handleUpload = async (files, metadata = null) => {
-    if (!files?.length) return
-    setLoading(true)
-    setError(null)
-    previewUrls.forEach(URL.revokeObjectURL)
-    const newUrls = files.map(f => URL.createObjectURL(f))
-    setPreviewUrls(newUrls)
-
-    // If metadata is provided (e.g. from video), use it to fill manual GPS
-    if (metadata && metadata.lat && metadata.lon) {
-      setManualGPS({
-        lat: metadata.lat.toString(),
-        lon: metadata.lon.toString(),
-        alt: (metadata.alt || 80).toString()
-      })
-      setUseManualGPS(true)
-    }
-
-    const params = new URLSearchParams()
-    if ((useManualGPS || metadata) && (metadata?.lat || manualGPS.lat)) {
-      const lat = metadata?.lat || manualGPS.lat
-      const lon = metadata?.lon || manualGPS.lon
-      const alt = metadata?.alt || manualGPS.alt || '80'
-      params.append('manual_lat', lat)
-      params.append('manual_lon', lon)
-      params.append('manual_altitude', alt)
-    }
-
-    try {
-      if (files.length === 1) {
-        const formData = new FormData()
-        formData.append('file', files[0])
-        const res = await axios.post(`${API}/detect?${params.toString()}`, formData)
-        setSingleResult(res.data)
-        setBatchResult(null)
-      } else {
-        const formData = new FormData()
-        files.forEach(f => formData.append('files', f))
-        const res = await axios.post(`${API}/detect/batch?${params.toString()}`, formData)
-        setBatchResult(res.data)
-        setSingleResult(null)
-      }
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Gagal deteksi. Pastikan backend aktif.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDeviceGPS = () => {
-    if (!navigator.geolocation) {
-      setGeoError('Geolocation tidak didukung browser ini.')
-      return
-    }
-    setGeolocating(true)
-    setGeoError(null)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude, altitude } = pos.coords
-        setManualGPS({
-          lat: latitude.toFixed(6),
-          lon: longitude.toFixed(6),
-          alt: altitude ? altitude.toFixed(1) : '80'
-        })
-        setUseManualGPS(true)
-        setGeolocating(false)
-      },
-      (err) => {
-        setGeoError(`GPS gagal: ${err.message}`)
-        setGeolocating(false)
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    )
-  }
-
-  const handleExport = () => window.open(`${API}/export/csv`, '_blank')
-  const handleClear = async () => {
-    if (window.confirm('Hapus semua log deteksi di server?')) {
-      await axios.post(`${API}/export/clear`)
-      setSingleResult(null)
-      setBatchResult(null)
-    }
-  }
-
-  const results = batchResult ? batchResult.results : (singleResult ? [singleResult] : [])
-  const allDetections = results.flatMap((r) => r.detections)
-
-  const stats = {
-    victims: batchResult ? batchResult.total_victims : (singleResult?.total_victims || 0),
-    images: batchResult ? batchResult.total_images : (singleResult ? 1 : 0),
-    inference: batchResult 
-      ? (batchResult.results.reduce((s, r) => s + r.inference_ms, 0) / batchResult.total_images).toFixed(1)
-      : singleResult?.inference_ms || 0,
-    gps: singleResult ? singleResult.gps_source.toUpperCase() : (batchResult ? 'MIXED' : '-')
-  }
+  const { state, actions } = useAppLogic()
+  
+  const { 
+    loading, error, manualGPS, useManualGPS, geolocating, 
+    geoError, previewUrls, systemStatus, results, allDetections, stats 
+  } = state
 
   return (
     <div className="app-container">
@@ -170,7 +60,6 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {/* SIDEBAR (Left on PC) */}
         <aside className="app-sidebar">
           <div className="sidebar-card">
             <div className="card-header-main">
@@ -180,7 +69,7 @@ export default function App() {
               </div>
               <StatusBar status={systemStatus} />
             </div>
-            <UploadZone onUpload={handleUpload} loading={loading} />
+            <UploadZone onUpload={actions.handleUpload} loading={loading} />
           </div>
 
           <div className="sidebar-card">
@@ -190,18 +79,13 @@ export default function App() {
             </div>
             <div className="gps-config">
               <label className="checkbox-field">
-                <input type="checkbox" checked={useManualGPS} onChange={e => setUseManualGPS(e.target.checked)} />
+                <input type="checkbox" checked={useManualGPS} onChange={e => actions.setUseManualGPS(e.target.checked)} />
                 <span>Override GPS Exif</span>
               </label>
 
-              <button
-                className="btn-device-gps"
-                onClick={handleDeviceGPS}
-                disabled={geolocating}
-                title="Gunakan GPS perangkat ini sebagai koordinat referensi"
-              >
+              <button className="btn-device-gps" onClick={actions.handleDeviceGPS} disabled={geolocating}>
                 <Icons.GPS />
-                {geolocating ? 'Mengambil lokasi...' : 'Use Device GPS'}
+                {geolocating ? 'Fetching GPS...' : 'Use Device GPS'}
               </button>
 
               {geoError && <p className="field-hint field-hint--error">{geoError}</p>}
@@ -210,40 +94,29 @@ export default function App() {
                 <div className="gps-grid">
                   <div className="field">
                     <label>Latitude</label>
-                    <input type="number" step="0.000001" placeholder="-7.342..." value={manualGPS.lat} onChange={e => setManualGPS(p => ({ ...p, lat: e.target.value }))} />
+                    <input type="number" step="0.000001" value={manualGPS.lat} onChange={e => actions.setManualGPS(p => ({ ...p, lat: e.target.value }))} />
                   </div>
                   <div className="field">
                     <label>Longitude</label>
-                    <input type="number" step="0.000001" placeholder="110.45..." value={manualGPS.lon} onChange={e => setManualGPS(p => ({ ...p, lon: e.target.value }))} />
+                    <input type="number" step="0.000001" value={manualGPS.lon} onChange={e => actions.setManualGPS(p => ({ ...p, lon: e.target.value }))} />
                   </div>
                   <div className="field full">
-                    <label>Altitude terbang (m AGL)</label>
-                    <input type="number" placeholder="80" value={manualGPS.alt} onChange={e => setManualGPS(p => ({ ...p, alt: e.target.value }))} />
+                    <label>Altitude (m AGL)</label>
+                    <input type="number" value={manualGPS.alt} onChange={e => actions.setManualGPS(p => ({ ...p, alt: e.target.value }))} />
                   </div>
                 </div>
-              )}
-              {!useManualGPS && !manualGPS.lat && <p className="field-hint">Reading coordinates from DJI EXIF metadata automatically.</p>}
-              {useManualGPS && manualGPS.lat && (
-                <p className="field-hint">
-                  Koordinat: {parseFloat(manualGPS.lat).toFixed(5)}, {parseFloat(manualGPS.lon).toFixed(5)} | Alt: {manualGPS.alt}m
-                </p>
               )}
             </div>
           </div>
 
           {allDetections.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <button className="btn-primary" onClick={handleExport}>
-                <Icons.Export /> Export CSV Report
-              </button>
-              <button className="btn-device-gps" style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }} onClick={handleClear}>
-                Clear Session
-              </button>
+              <button className="btn-primary" onClick={actions.handleExport}><Icons.Export /> Export CSV</button>
+              <button className="btn-device-gps" style={{ opacity: 0.6 }} onClick={actions.handleClear}>Clear Session</button>
             </div>
           )}
         </aside>
 
-        {/* CONTENT AREA (Main Visualization) */}
         <section className="app-content">
           {error && <div className="alert-error"><strong>System Error:</strong> {error}</div>}
 
@@ -257,8 +130,8 @@ export default function App() {
           {!results.length && !loading && (
             <div className="empty-placeholder">
               <Icons.Empty />
-              <h2>No Mission Data</h2>
-              <p>Please upload drone imagery to begin victim localization.</p>
+              <h2>Ready for Mission</h2>
+              <p>Upload drone imagery or video clips to begin victim localization.</p>
             </div>
           )}
 
@@ -266,34 +139,32 @@ export default function App() {
             <div className="results-wrapper">
               <div className="analytics-grid">
                 <div className={`analytic-item ${stats.victims > 0 ? 'critical' : ''}`}>
-                  <label>Victims Detected</label>
+                  <label>Victims</label>
                   <div className="value">{stats.victims}</div>
                 </div>
                 <div className="analytic-item">
-                  <label>Mean Inference</label>
+                  <label>Avg Inference</label>
                   <div className="value">{stats.inference}<span>ms</span></div>
                 </div>
                 <div className="analytic-item">
-                  <label>Processed</label>
-                  <div className="value">{stats.images}<span>img</span></div>
+                  <label>Images</label>
+                  <div className="value">{stats.images}</div>
                 </div>
                 <div className="analytic-item">
-                  <label>GPS Lock</label>
+                  <label>GPS Status</label>
                   <div className="value small">{stats.gps}</div>
                 </div>
               </div>
 
-              {/* Grid foto yang diunggah */}
               <div className="visualization-grid">
                 {results.map((item, idx) => (
                   <DetectionResult key={`${item.filename}-${idx}`} result={item} previewUrl={previewUrls[idx]} />
                 ))}
               </div>
 
-              {/* Peta diletakkan di bawah foto (Full Width) */}
               {allDetections.some(d => d.lat) && (
                 <div className="main-card map-section-wide">
-                  <div className="card-header"><Icons.GPS /> <h3>Geospatial Context (Victim Map)</h3></div>
+                  <div className="card-header"><Icons.GPS /> <h3>Mission Map</h3></div>
                   <VictimMap detections={allDetections} />
                 </div>
               )}

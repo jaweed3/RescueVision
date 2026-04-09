@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { extractFramesFromVideo, extractDJIMetadata } from '../utils/videoProcessor'
 import './UploadZone.css'
 
 const UploadIcon = () => (
@@ -7,68 +8,15 @@ const UploadIcon = () => (
   </svg>
 )
 
+/**
+ * UploadZone Component
+ * Handles file selection (drag & drop or click) and triggers processing.
+ */
 export default function UploadZone({ onUpload, loading }) {
   const inputRef = useRef()
   const [dragging, setDragging] = useState(false)
   const [internalLoading, setInternalLoading] = useState(false)
   const [progress, setProgress] = useState(0)
-
-  const extractFramesFromVideo = async (file) => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video')
-      video.preload = 'metadata'
-      video.src = URL.createObjectURL(file)
-      
-      video.onloadedmetadata = async () => {
-        const duration = video.duration
-        const maxDuration = 15
-        const actualDuration = Math.min(duration, maxDuration)
-        const frames = []
-        const canvas = document.createElement('canvas')
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        const ctx = canvas.getContext('2d')
-
-        for (let t = 0; t < actualDuration; t++) {
-          video.currentTime = t
-          await new Promise(r => {
-            video.addEventListener('seeked', r, { once: true })
-          })
-          
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85))
-          const frameFile = new File([blob], `${file.name.replace(/\.[^/.]+$/, "")}_frame_${t}.jpg`, { type: 'image/jpeg' })
-          frames.push(frameFile)
-          setProgress(Math.round(((t + 1) / actualDuration) * 100))
-        }
-        URL.revokeObjectURL(video.src)
-        resolve(frames)
-      }
-      
-      video.onerror = () => reject(new Error('Format video tidak didukung atau rusak.'))
-    })
-  }
-
-  const extractDJIMetadata = async (file) => {
-    try {
-      const chunk = await file.slice(0, 500000).text()
-      // DJI Drone specific XMP metadata tags
-      const latMatch = chunk.match(/GpsLatitude="([+-]?\d+\.\d+)"/)
-      const lonMatch = chunk.match(/GpsLongitude="([+-]?\d+\.\d+)"/)
-      const altMatch = chunk.match(/RelativeAltitude="([+-]?\d+\.\d+)"/) || chunk.match(/AbsoluteAltitude="([+-]?\d+\.\d+)"/)
-      
-      if (latMatch && lonMatch) {
-        return {
-          lat: parseFloat(latMatch[1]),
-          lon: parseFloat(lonMatch[1]),
-          alt: altMatch ? parseFloat(altMatch[1]) : 80
-        }
-      }
-    } catch (e) {
-      console.warn('Metadata parse failed:', e)
-    }
-    return null
-  }
 
   const handleFiles = async (fileList) => {
     const files = Array.from(fileList || [])
@@ -80,20 +28,25 @@ export default function UploadZone({ onUpload, loading }) {
     try {
       let allFiles = []
       let firstVideoMetadata = null
+
       for (const file of files) {
         if (file.type.startsWith('video/')) {
+          // Extract metadata if this is the first video in the selection
           if (!firstVideoMetadata) {
             firstVideoMetadata = await extractDJIMetadata(file)
           }
-          const frames = await extractFramesFromVideo(file)
+          // Process frames
+          const frames = await extractFramesFromVideo(file, 1, 15)
           allFiles = [...allFiles, ...frames]
         } else {
           allFiles.push(file)
         }
       }
+      
       onUpload(allFiles, firstVideoMetadata)
     } catch (err) {
-      alert(err.message)
+      console.error('[UploadZone] File handling error:', err)
+      alert(err.message || 'Error processing files.')
     } finally {
       setInternalLoading(false)
       setProgress(0)
@@ -127,7 +80,7 @@ export default function UploadZone({ onUpload, loading }) {
       {isActuallyLoading ? (
         <div className="upload-loading">
           <div className="mini-spinner" />
-          <p>{internalLoading ? `Sampling Video (${progress}%)...` : 'Memproses file...'}</p>
+          <p>{internalLoading ? 'Processing Video...' : 'Uploading...'}</p>
         </div>
       ) : (
         <>
