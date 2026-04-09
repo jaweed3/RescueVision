@@ -59,7 +59,7 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleUpload = async (files) => {
+  const handleUpload = async (files, metadata = null) => {
     if (!files?.length) return
     setLoading(true)
     setError(null)
@@ -67,11 +67,24 @@ export default function App() {
     const newUrls = files.map(f => URL.createObjectURL(f))
     setPreviewUrls(newUrls)
 
+    // If metadata is provided (e.g. from video), use it to fill manual GPS
+    if (metadata && metadata.lat && metadata.lon) {
+      setManualGPS({
+        lat: metadata.lat.toString(),
+        lon: metadata.lon.toString(),
+        alt: (metadata.alt || 80).toString()
+      })
+      setUseManualGPS(true)
+    }
+
     const params = new URLSearchParams()
-    if (useManualGPS && manualGPS.lat && manualGPS.lon) {
-      params.append('manual_lat', manualGPS.lat)
-      params.append('manual_lon', manualGPS.lon)
-      params.append('manual_altitude', manualGPS.alt || '80')
+    if ((useManualGPS || metadata) && (metadata?.lat || manualGPS.lat)) {
+      const lat = metadata?.lat || manualGPS.lat
+      const lon = metadata?.lon || manualGPS.lon
+      const alt = metadata?.alt || manualGPS.alt || '80'
+      params.append('manual_lat', lat)
+      params.append('manual_lon', lon)
+      params.append('manual_altitude', alt)
     }
 
     try {
