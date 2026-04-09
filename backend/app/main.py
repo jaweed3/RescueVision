@@ -19,6 +19,11 @@ from typing import Optional
 import tempfile
 import shutil
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger(__name__)
 
 from app.inference import RescueVisionInference
@@ -82,9 +87,10 @@ inference_engine = None
 @app.on_event("startup")
 async def startup_event():
     global inference_engine
+    logger.info("[STARTUP] RescueVision Edge backend starting up")
+    logger.info("[STARTUP] Config: %s", config)
     if not MODEL_PATH.exists():
-        print(f"WARNING: model.onnx not found at {MODEL_PATH}")
-        print("Place model.onnx in the repo root directory")
+        logger.error("[STARTUP] model.onnx NOT FOUND at %s — inference disabled", MODEL_PATH)
         return
     inference_engine = RescueVisionInference(
         model_path=str(MODEL_PATH),
@@ -92,8 +98,8 @@ async def startup_event():
         iou_threshold=config["iou_threshold"],
         input_size=config["input_size"]
     )
-    print(f"Model loaded: {MODEL_PATH}")
-    print(f"Provider: {inference_engine.providers}")
+    logger.info("[STARTUP] Model loaded: %s", MODEL_PATH)
+    logger.info("[STARTUP] ONNX providers: %s", inference_engine.providers)
 
 # ─────────────────────────────────────────────
 # Routes
@@ -127,29 +133,76 @@ async def detect_single(
     if inference_engine is None:
         raise HTTPException(status_code=503, detail="Model not loaded.")
 
+    file_size_bytes = 0
     with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
+        file_size_bytes = tmp.tell()
+
+    logger.info(
+        "[DETECT] Incoming upload — filename=%r content_type=%r size=%.1f KB",
+        file.filename, file.content_type, file_size_bytes / 1024
+    )
+    logger.debug(
+        "[DETECT] Manual GPS params — manual_lat=%s manual_lon=%s manual_altitude=%s",
+        manual_lat, manual_lon, manual_altitude
+    )
 
     try:
         detections, inference_ms, img_w, img_h = inference_engine.run(tmp_path)
+        logger.info(
+            "[DETECT] Inference done — %.1f ms | image=%dx%d | raw detections=%d",
+            inference_ms, img_w, img_h, len(detections)
+        )
+
         exif_gps = extract_exif_gps(tmp_path)
 
         if exif_gps:
             ref_lat = exif_gps["lat"]
             ref_lon = exif_gps["lon"]
-            ref_alt = exif_gps.get("altitude", manual_altitude or 80.0)
             focal = exif_gps.get("focal_length", 4.5)
+            ref_heading = exif_gps.get("heading")
             gps_source = "exif"
+
+            altitude_is_agl = exif_gps.get("altitude_is_agl", True)
+            gps_method = exif_gps.get("gps_method", "gps")
+
+            if altitude_is_agl:
+                # Drone GPS — altitude is height above ground, safe to use for GSD
+                ref_alt = exif_gps.get("altitude", manual_altitude or 80.0)
+                logger.info(
+                    "[GPS] Source=EXIF (method=%s) | lat=%.6f lon=%.6f alt=%.1fm (AGL) focal=%.2fmm heading=%s",
+                    gps_method, ref_lat, ref_lon, ref_alt, focal, ref_heading
+                )
+            else:
+                # Network/WiFi GPS — altitude is ASL, would break GSD calculation
+                # Use manual_altitude if provided, else default 80m
+                ref_alt = manual_altitude if manual_altitude and manual_altitude != 80.0 else 80.0
+                logger.warning(
+                    "[GPS] Source=EXIF (method=%s) | lat=%.6f lon=%.6f | "
+                    "EXIF altitude=%.1fm is ASL — using %.1fm for GSD instead. "
+                    "Set manual_altitude for accurate results.",
+                    gps_method, ref_lat, ref_lon, exif_gps.get("altitude", 0), ref_alt
+                )
         elif manual_lat and manual_lon:
             ref_lat = manual_lat
             ref_lon = manual_lon
             ref_alt = manual_altitude or 80.0
             focal = 4.5
+            ref_heading = None
             gps_source = "manual"
+            logger.info(
+                "[GPS] Source=MANUAL | lat=%.6f lon=%.6f alt=%.1fm",
+                ref_lat, ref_lon, ref_alt
+            )
         else:
-            ref_lat, ref_lon, ref_alt, focal = None, None, None, 4.5
+            ref_lat, ref_lon, ref_alt, focal, ref_heading = None, None, None, 4.5, None
             gps_source = "none"
+            logger.warning(
+                "[GPS] Source=NONE — no EXIF GPS and no manual coords provided. "
+                "Map will be empty. filename=%r content_type=%r size=%.1f KB",
+                file.filename, file.content_type, file_size_bytes / 1024
+            )
 
         enriched = []
         for i, det in enumerate(detections):
@@ -165,12 +218,17 @@ async def detect_single(
                     ref_lat, ref_lon, ref_alt,
                     det["cx_rel"] * img_w, det["cy_rel"] * img_h,
                     img_w, img_h,
-                    focal_length=focal
+                    focal_length=focal,
+                    heading=ref_heading
                 )
                 victim["lat"] = round(coords["lat"], 7)
                 victim["lon"] = round(coords["lon"], 7)
                 victim["accuracy_m"] = coords["accuracy_m"]
-                
+                logger.debug(
+                    "[VICTIM #%d] conf=%.3f bbox=%s → lat=%.6f lon=%.6f acc=%.1fm",
+                    victim["id"], victim["confidence"], det["box"],
+                    victim["lat"], victim["lon"], victim["accuracy_m"]
+                )
                 # Log for export
                 DETECTIONS_LOG.append({
                     "filename": file.filename,
@@ -182,7 +240,16 @@ async def detect_single(
                 victim["lat"] = None
                 victim["lon"] = None
                 victim["accuracy_m"] = None
+                logger.debug(
+                    "[VICTIM #%d] conf=%.3f bbox=%s → NO GPS COORDS (gps_source=none)",
+                    victim["id"], victim["confidence"], det["box"]
+                )
             enriched.append(victim)
+
+        logger.info(
+            "[DETECT] Result — file=%r victims=%d gps_source=%s",
+            file.filename, len(enriched), gps_source
+        )
 
         return DetectionResult(
             filename=file.filename,
@@ -269,19 +336,37 @@ async def export_csv():
     """Export all detected victim coordinates."""
     import csv
     import io
-    from fastapi.responses import StreamingResponse
+    from fastapi import Response
+
+    if not DETECTIONS_LOG:
+        # Return a CSV with just headers if no detections
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=["filename", "lat", "lon", "confidence"])
+        writer.writeheader()
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=victims.csv"}
+        )
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["filename", "lat", "lon", "confidence"])
     writer.writeheader()
-    writer.writerows(DETECTIONS_LOG)
+    # Convert deque to list to ensure compatibility
+    writer.writerows(list(DETECTIONS_LOG))
     
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
+    return Response(
+        content=output.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=victims.csv"}
     )
+
+
+@app.post("/export/clear")
+async def clear_logs():
+    """Clear the detections log."""
+    DETECTIONS_LOG.clear()
+    return {"status": "cleared", "total": 0}
 
 
 if __name__ == "__main__":

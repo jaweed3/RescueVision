@@ -1,6 +1,7 @@
 // VictimMap.jsx — Leaflet map showing victim coordinates
 import { MapContainer, TileLayer, Popup, CircleMarker } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
+import './VictimMap.css'
 import L from 'leaflet'
 
 // Fix leaflet default icon
@@ -21,7 +22,7 @@ export default function VictimMap({ detections }) {
   ]
 
   return (
-    <div style={{ borderRadius: 12, overflow: 'hidden', height: 300, marginTop: 16 }}>
+    <div className="victim-map-container">
       <MapContainer center={center} zoom={17} style={{ height: '100%', width: '100%' }}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -29,7 +30,7 @@ export default function VictimMap({ detections }) {
         />
         {validDetections.map(d => (
           <CircleMarker
-            key={d.id}
+            key={`map-v-${d.id}`}
             center={[d.lat, d.lon]}
             radius={10}
             fillColor="#ef4444"
