@@ -1,0 +1,41 @@
+CPU Inference Benchmark — RescueVision Edge
+FindIT! 2026 Track A: The Edge Vision
+Generated: 2026-04-07 (from inference.ipynb Cell 11 output)
+=================================================================
+
+Hardware  : Intel Core i5-12400F (6C/12T, base 2.5 GHz)
+Runtime   : ONNX Runtime 1.23.2
+Provider  : CPUExecutionProvider (no GPU)
+Model     : model/best.onnx (YOLOv8n, opset 12, 11.70 MB)
+Input     : 640×640 px (letterbox padded)
+Samples   : 30 images from test_data/
+
+-----------------------------------------------------------------
+
+Metric                         Value        Constraint   Status
+-----------------------------------------------------------------
+Mean latency (ms)              31.9 ms      —            —
+P95 latency (ms)               33.9 ms      —            —
+Max latency (ms)               38.1 ms      ≤ 3000 ms    PASS ✓
+Single-image (first call)      41.5 ms      ≤ 3000 ms    PASS ✓
+
+-----------------------------------------------------------------
+
+C-A3 VERDICT: PASS
+Max latency 38.1 ms is 98.7% below the 3000 ms constraint.
+
+Margin estimation for slower CPUs:
+  i5-12400F single-thread score  : ~3200 (Cinebench R23 est.)
+  i5-8400 single-thread score    : ~1200 (Cinebench R23 est.)
+  Estimated worst-case i5 Gen 8  : ~38.1 × (3200/1200) ≈ 102 ms
+  Still within constraint (102 ms ≤ 3000 ms) with 29× margin.
+
+-----------------------------------------------------------------
+
+Training validation (from training.ipynb Cell 19 output):
+  Mean latency (30 samples)  : 28.0 ms
+  Max  latency               : 31.4 ms
+  Provider                   : CPUExecutionProvider
+  CPU                        : Intel Core i5-12400F
+
+=================================================================
