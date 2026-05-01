@@ -1,0 +1,87 @@
+.detection-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.res-header {
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.res-header h4 { font-size: 0.85rem; color: var(--text-main); font-weight: 600; }
+
+.status-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  text-transform: uppercase;
+}
+.status-badge.found { background: rgba(239, 68, 68, 0.1); color: var(--critical); border: 1px solid var(--critical); }
+.status-badge.clear { background: rgba(16, 185, 129, 0.1); color: var(--safe); border: 1px solid var(--safe); }
+
+.canvas-wrapper {
+  position: relative;
+  width: 100%;
+  background: #000;
+  line-height: 0;
+}
+
+.base-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.box-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.result-table-wrapper {
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.mini-table th {
+  text-align: left;
+  color: var(--text-dim);
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.mini-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+  color: var(--text-main);
+}
+
+.id-tag {
+  background: var(--accent);
+  color: white;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 800;
+  font-size: 0.65rem;
+}
+
+code { font-family: monospace; color: var(--safe); }
