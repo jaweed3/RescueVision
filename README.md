@@ -1,60 +1,296 @@
 # RescueVision Edge
+
 **Lightweight Sovereign AI for On-Device Victim Localization in Post-Disaster Aerial Assessment**
 
-Tim: Hamba tuhan yang mahaesa  
-Kompetisi: Hackathon FindIT! 2026 — Track A: The Edge Vision  
-Institusi: Universitas Darussalam Gontor (UNIDA)
+> Hackathon FindIT! 2026 — Track A: The Edge Vision (Computer Vision)  
+> Universitas Darussalam Gontor (UNIDA) — Tim _Hamba tuhan yang mahaesa_
 
 ---
 
-## Constraint Compliance Summary (Track A)
+## Ringkasan
 
-| Constraint | Requirement | Status |
-|---|---|---|
-| C-A1: Ukuran Model | ≤ 50 MB | ✅ YOLOv8n ONNX ~12MB |
-| C-A2: Platform | CPU-only compatible | ✅ ONNX Runtime |
-| C-A3: Kecepatan Inferensi | ≤ 3 detik/sampel @ CPU | ✅ ~0.3–0.8s @ i5 Gen 8 |
-| C-A4: Framework | PyTorch / TF / ONNX Runtime | ✅ Ultralytics + ONNX Runtime |
-| C-A5: Offline Total | Tanpa API eksternal | ✅ Fully local |
-| Umum-4: No Cloud Inference | Tidak ada API cloud | ✅ |
+RescueVision Edge adalah sistem deteksi korban bencana dari citra udara _drone_ yang berjalan sepenuhnya secara luring (_offline_), tanpa ketergantungan pada _cloud computing_ atau API eksternal apapun. Sistem menggunakan YOLOv8n yang dioptimasi dan diekspor ke format ONNX untuk inferensi CPU-only dengan latensi <40ms per citra.
+
+**Hasil utama:**
+
+| Metrik                                 | Nilai    |
+| -------------------------------------- | -------- |
+| mAP@0.5 (VisDrone pedestrian)          | 0.5280   |
+| mAP@0.5:0.95                           | 0.2159   |
+| Ukuran model (ONNX)                    | 11.70 MB |
+| Latensi inferensi CPU (max, 30 sampel) | 38.1 ms  |
+| Baseline YOLOv5n mAP@0.5               | 0.4684   |
+
+---
+
+## Kepatuhan Constraint Track A
+
+| Constraint         | Requirement            | Implementasi               | Status  |
+| ------------------ | ---------------------- | -------------------------- | ------- |
+| C-A1 Ukuran Model  | ≤ 50 MB                | ONNX 11.70 MB              | ✅ PASS |
+| C-A2 Platform      | CPU-only capable       | `CPUExecutionProvider`     | ✅ PASS |
+| C-A3 Kecepatan     | ≤ 3.000 ms/sampel      | 38.1 ms max                | ✅ PASS |
+| C-A4 Framework     | PyTorch / ONNX Runtime | Ultralytics + ONNX Runtime | ✅ PASS |
+| C-A5 Offline Total | Tanpa API eksternal    | Zero external calls        | ✅ PASS |
 
 ---
 
 ## Struktur Repository
 
 ```
-rescuevision-edge/
-├── train_data/                  # Dataset training (VisDrone — pedestrian only)
-│   ├── images/train/
-│   ├── images/val/
-│   └── labels/train/  labels/val/
-├── test_data/                   # Dataset test TERPISAH
-│   ├── images/
-│   └── labels/
-├── model/
-│   ├── best.pt                  # YOLOv8n trained weights
-│   └── best.onnx                # ONNX export (CPU inference)
+RescueVision/
+│
 ├── notebooks/
-│   ├── training.ipynb
-│   └── inference.ipynb
-├── src/
-│   ├── prepare_visdrone.py
-│   ├── split_dataset.py
-│   └── benchmark_cpu.py
-├── docs/
-├── dataset.yaml
+│   ├── training.ipynb               # Pipeline training lengkap + log visible
+│   └── inference.ipynb              # Script inferensi bersih, CPU-only
+│
+├── model/
+│   ├── best.pt                      # YOLOv8n trained weights (PyTorch)
+│   └── best.onnx                    # Model final untuk inferensi (ONNX)
+│
+├── train_data/                      # Dataset training + validasi
+│   ├── images/train/                # 5.655 gambar
+│   ├── images/val/                  # 530 gambar
+│   └── labels/train/  labels/val/
+│
+├── test_data/                       # Dataset test (dipisah sebelum preprocessing)
+│   ├── images/                      # 1.265 gambar
+│   └── labels/
+│
+├── runs/                            # Output training Ultralytics
+│   ├── detect/runs/train/
+│   │   └── rescuevision_v13/        # YOLOv8n final (100 epoch, mAP50=0.528)
+│   └── yolov5n_baseline/            # YOLOv5n baseline experiment
+│
+├── scripts/
+│   ├── prepare_visdrone.py          # Filter kelas + konversi YOLO format
+│   ├── verify_split.py              # Verifikasi zero data leakage
+│   └── benchmark_cpu.py             # Benchmark latensi inferensi CPU
+│
+├── backend/                         # FastAPI backend (Tahap 3)
+├── frontend/                        # React + Vite frontend (Tahap 3)
+├── docs/                            # Dokumentasi + laporan constraint
+├── dataset.yaml                     # Konfigurasi dataset Ultralytics
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Quick Start
+## Setup Environment
 
 ```bash
-python -m venv venv && source venv/bin/activate
+# Aktifkan conda environment
+conda activate mlenv
+
+# Install dependensi
 pip install -r requirements.txt
-python src/prepare_visdrone.py
-python src/split_dataset.py
-# Lalu buka notebooks/training.ipynb
+
+# Download VisDrone dataset (manual)
+# https://github.com/VisDrone/VisDrone-Dataset
+# Extract ke: data/raw/
+# Struktur yang dibutuhkan:
+#   data/raw/VisDrone2019-DET-train/images/ & annotations/
+#   data/raw/VisDrone2019-DET-val/images/ & annotations/
+#   data/raw/VisDrone2019-DET-test-dev/images/ & annotations/
+
+# Siapkan dataset
+python scripts/prepare_visdrone.py --skip-download
+
+# Verifikasi zero data leakage
+python scripts/verify_split.py
 ```
+
+---
+
+## Menjalankan Aplikasi (Frontend + Backend)
+
+Ada dua cara: **Docker** (direkomendasikan) atau **2 terminal terpisah**.
+
+### Cara 1: Docker Compose
+
+Pastikan `model.onnx` sudah ada di root repo (salin dari `model/best.onnx` jika perlu):
+
+```bash
+cp model/best.onnx model.onnx
+```
+
+Jalankan semua service:
+
+```bash
+docker compose up --build
+```
+
+| Service  | URL                         |
+| -------- | --------------------------- |
+| Frontend | http://localhost:3000       |
+| Backend  | http://localhost:8000       |
+| API Docs | http://localhost:8000/docs  |
+
+Volume yang di-mount otomatis oleh docker-compose:
+- `./backend/config.json` → `/app/config.json` (konfigurasi runtime)
+- `model.onnx` harus ada di root repo sebelum build (dibaca saat startup)
+
+Menghentikan:
+
+```bash
+docker compose down
+```
+
+---
+
+### Cara 2: 2 Terminal Terpisah
+
+Jalankan di 2 terminal terpisah.
+
+### 1) Nyalakan Backend (FastAPI)
+
+```bash
+cd backend
+conda activate mlenv
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Backend aktif di:
+- http://localhost:8000
+- http://localhost:8000/docs
+
+Catatan model:
+- Backend membaca model dari root project dengan nama `model.onnx`.
+- Jika model Anda berada di `model/best.onnx`, salin dulu:
+
+```bash
+cp model/best.onnx model.onnx
+```
+
+### 2) Nyalakan Frontend (React + Vite)
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Frontend aktif di:
+- http://localhost:5173
+- jika port 5173 terpakai, Vite akan pindah ke port lain (misalnya 5174)
+
+---
+
+## Mematikan Aplikasi
+
+### Cara normal
+
+- Tekan `Ctrl + C` pada terminal backend.
+- Tekan `Ctrl + C` pada terminal frontend.
+
+### Jika proses masih jalan di background
+
+```bash
+# Cek proses yang memakai port backend
+fuser -n tcp 8000
+
+# Cek proses yang memakai port frontend (5173 atau 5174)
+fuser -n tcp 5173
+fuser -n tcp 5174
+```
+
+Jika ingin menghentikan proses berdasarkan PID (angka yang keluar dari `fuser`):
+
+```bash
+kill <PID>
+```
+
+---
+
+## Training
+
+Buka `notebooks/training.ipynb` dan jalankan semua sel secara berurutan.
+
+**Konfigurasi utama:**
+
+```python
+model   = 'yolov8n.pt'   # YOLOv8 nano — 3.2M parameter
+imgsz   = 640
+batch   = 16
+epochs  = 100             # early stopping patience=20
+device  = 0               # NVIDIA GeForce RTX 4060
+```
+
+---
+
+## Inferensi
+
+Buka `notebooks/inference.ipynb` dan jalankan semua sel.
+
+- Model dimuat dari `model/best.onnx`
+- Inferensi menggunakan `CPUExecutionProvider` — tanpa GPU
+- Output: _bounding box_, _confidence score_, koordinat relatif korban
+
+```
+Contoh output:
+  Inference time : 41.5 ms  (limit: 3000 ms)
+  Detections     : 3 pedestrian(s)
+  ✅ Constraint C-A3 PASS
+
+  [1] (1040.6, 161.2, 1048.6, 175.1) conf=0.460
+  [2] ( 865.3, 155.4,  871.8, 170.5) conf=0.440
+  [3] (1134.8, 161.1, 1141.3, 174.8) conf=0.437
+```
+
+---
+
+## Benchmark CPU
+
+```bash
+python scripts/benchmark_cpu.py --model model/best.onnx --images test_data/images/ --n 30
+```
+
+Laporan tersimpan di `docs/cpu_benchmark.txt`.
+
+---
+
+## Dataset
+
+**VisDrone-DET 2019** — Task 1: Object Detection in Images  
+Sumber: https://github.com/VisDrone/VisDrone-Dataset
+
+| Split | Gambar | Lokasi                     |
+| ----- | ------ | -------------------------- |
+| Train | 5.655  | `train_data/images/train/` |
+| Val   | 530    | `train_data/images/val/`   |
+| Test  | 1.265  | `test_data/images/`        |
+
+Hanya kelas **pedestrian** (1) dan **people** (2) yang digunakan, digabung menjadi satu kelas `pedestrian`. Pemisahan `test_data/` dilakukan **sebelum** preprocessing apapun. Laporan verifikasi leakage: `docs/leakage_report.txt`.
+
+---
+
+## Perbandingan Arsitektur
+
+| Metrik             | YOLOv5n (baseline) | YOLOv8n (final) |
+| ------------------ | ------------------ | --------------- |
+| mAP@0.5            | 0.4684             | **0.5280**      |
+| mAP@0.5:0.95       | 0.1728             | **0.2159**      |
+| ONNX size          | 7.49 MB            | 11.70 MB        |
+| CPU latency (mean) | 18.0 ms            | 30.4 ms         |
+| CPU latency (max)  | 19.8 ms            | 38.1 ms         |
+
+YOLOv8n dipilih karena unggul 5.96 poin mAP@0.5 dengan latensi CPU tetap jauh di bawah batas 3.000 ms. Lihat `docs/architecture_comparison.txt` untuk laporan lengkap.
+
+---
+
+## Tim
+
+| Nama                    | NIM          | 
+| ----------------------- | ------------ |
+| Wafa Bila Syaefurokhman | 442023611098 |
+| Farrel Ghozy Affifudin  | 452024611053 |
+| Fatih Jawwad Al Mumtaz  | 452024611047 |
+| Sabri Mutiur Rahman     | 442023611104 |
+
+---
+
+## Lisensi
+
+Dataset VisDrone-DET 2019 digunakan untuk keperluan penelitian dan kompetisi non-komersial sesuai ketentuan distribusi resmi. Model YOLOv8n menggunakan lisensi AGPL-3.0 dari Ultralytics.

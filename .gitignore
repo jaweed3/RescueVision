@@ -2,6 +2,15 @@
 __pycache__/
 *.py[cod]
 .Python
+backend/app/__pycache__/
+*.so
+
+# Python tools/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -9,6 +18,16 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
+backend/.venv/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Dataset (too large for git)
 data/raw/
@@ -17,18 +36,45 @@ train_data/labels/
 test_data/images/
 test_data/labels/
 
-# Model weights (submit separately)
-*.pt
-*.pth
-*.h5
-*.onnx
-
 # Ultralytics cache
 .ultralytics/
+
+# YoloV5 repository
+yolov5/
 
 # Runs
 runs/*/weights/
 
+# Model weights (too large for git)
+*.pt
+*.onnx
+model/
+
+# Runtime outputs
+detections_export.csv
+*.tmp
+*.temp
+backend/tile_cache/
+
+# Generated docs
+docs/*.pdf
+docs/*.docx
+notebooks/*.html
+
+# Misc artifacts
+struktur.txt
+yolo/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+
 # OS
 .DS_Store
 Thumbs.db
+

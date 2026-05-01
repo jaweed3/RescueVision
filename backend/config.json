@@ -1,0 +1,11 @@
+{
+	"conf_threshold": 0.25,
+	"iou_threshold": 0.45,
+	"input_size": 640,
+	"grid_zone_size_m": 50,
+	"export_format": [
+		"csv",
+		"json"
+	],
+	"max_batch_size": 100
+}
