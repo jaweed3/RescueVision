@@ -54,7 +54,14 @@ model/
 detections_export.csv
 *.tmp
 *.temp
+*.log
 backend/tile_cache/
+
+# Test artifacts
+detection_annotated_*.jpg
+detection_result_*.json
+test*.jpg
+test*.png
 
 # Generated docs
 docs/*.pdf
