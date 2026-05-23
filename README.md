@@ -12,8 +12,7 @@
 <p align="center"><b>Lightweight Sovereign AI for On-Device Victim Localization</b><br>in Post-Disaster Aerial Assessment</p>
 
 <p align="center">
-  <i>Hackathon FindIT! 2026 — Track A: The Edge Vision (Computer Vision)</i><br>
-  <i>Universitas Darussalam Gontor (UNIDA) — Tim Hamba tuhan yang mahaesa</i>
+  <i>Universitas Darussalam Gontor (UNIDA)</i>
 </p>
 
 ---
@@ -154,12 +153,10 @@ RescueVision/
 
 ## 👥 Tim
 
-| Nama | NIM |
-|------|:---:|
-| Wafa Bila Syaefurokhman | 442023611098 |
-| Farrel Ghozy Affifudin | 452024611053 |
-| Fatih Jawwad Al Mumtaz | 452024611047 |
-| Sabri Mutiur Rahman | 442023611104 |
+| Nama | Role |
+|------|:----:|
+| Farrel Ghozy Affifudin | DevOps & Frontend |
+| Fatih Jawwad Al Mumtaz | AI/ML & Backend |
 
 ---
 
@@ -169,4 +166,4 @@ Dataset VisDrone-DET 2019 — riset non-komersial. Model YOLOv8n — AGPL-3.0.
 
 ---
 
-<p align="center"><i>Made with ❤️ for FindIT! 2026 — Track A: The Edge Vision</i></p>
+
