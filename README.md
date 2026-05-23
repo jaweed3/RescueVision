@@ -15,6 +15,16 @@
   <i>Universitas Darussalam Gontor (UNIDA)</i>
 </p>
 
+<br>
+
+> **What if** a 7.8 magnitude earthquake levels a city — towers down, internet dead, no cloud, no API, no maps.  
+> Search teams arrive with nothing but drones and a laptop.  
+> They fly. The drone streams footage. A laptop runs our model.  
+> **Within seconds, every victim is located — offline, on-device, no connection needed.**  
+> *That's what RescueVision Edge was built for.*
+
+<br>
+
 ---
 
 ## 📋 Ringkasan
