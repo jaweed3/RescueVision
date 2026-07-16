@@ -37,7 +37,7 @@ export function useAppLogic() {
     setError(null)
 
     // Cleanup old preview URLs
-    previewUrls.forEach(URL.revokeObjectURL)
+    previewUrls.forEach(url => URL.revokeObjectURL(url))
     const newUrls = files.map(f => URL.createObjectURL(f))
     setPreviewUrls(newUrls)
 
@@ -132,7 +132,7 @@ export function useAppLogic() {
     },
     actions: {
       handleUpload, handleDeviceGPS, handleClear, setUseManualGPS, setManualGPS,
-      handleExport: () => window.open(detectionApi.getExportUrl(), '_blank')
+      setError, handleExport: () => window.open(detectionApi.getExportUrl(), '_blank')
     }
   }
 }
