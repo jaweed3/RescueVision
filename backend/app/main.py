@@ -5,22 +5,26 @@ Tahap 3: Model → API → App
 Run: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, Response
+from app.inference import RescueVisionInference
+from app.gps import extract_exif_gps, calculate_victim_coordinates
+from app.models import DetectionResult, BatchResult, InjectConfig
+from pathlib import Path
+from typing import Optional
+from constant import MODEL_PATH, inference_engine, DETECTIONS_LOG, TILE_CACHE_DIR, TILE_USER_AGENT, TILE_SERVERS
+from utils import load_config
 import uvicorn
 import json
 import logging
+import csv
+import io
 import os
-from collections import deque
-from pathlib import Path
-from typing import Optional
 import tempfile
 import shutil
 import urllib.request
 import hashlib
-import time
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -29,20 +33,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from app.inference import RescueVisionInference
-from app.gps import extract_exif_gps, calculate_victim_coordinates
-from app.models import DetectionResult, BatchResult, InjectConfig
-
-# ─────────────────────────────────────────────
-# App initialization
-# ─────────────────────────────────────────────
 app = FastAPI(
     title="RescueVision Edge API",
     description="Lightweight on-device victim detection for post-disaster SAR",
     version="1.0.0"
 )
 
-# CORS — allow all origins for Edge tool accessibility
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,41 +47,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─────────────────────────────────────────────
-# Config (Dynamic Injection ready)
-# ─────────────────────────────────────────────
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
-
-DEFAULT_CONFIG = {
-    "conf_threshold": 0.25,
-    "iou_threshold": 0.45,
-    "input_size": 640,
-    "grid_zone_size_m": 50,
-    "export_format": ["csv", "json"],
-    "max_batch_size": 100,
-}
-
-def load_config():
-    config = DEFAULT_CONFIG.copy()
-    if CONFIG_PATH.exists():
-        try:
-            with open(CONFIG_PATH) as f:
-                loaded = json.load(f) or {}
-            if isinstance(loaded, dict):
-                config.update(loaded)
-        except json.JSONDecodeError as e:
-            logger.warning("config.json is invalid JSON (%s) — using defaults", e)
-        except OSError as e:
-            logger.warning("Could not read config.json (%s) — using defaults", e)
-    return config
 
 config = load_config()
 
-# ─────────────────────────────────────────────
-# Model initialization
-# ─────────────────────────────────────────────
-MODEL_PATH = Path(__file__).parent.parent.parent / "model.onnx"
-inference_engine = None
 
 @app.on_event("startup")
 async def startup_event():
@@ -104,22 +69,7 @@ async def startup_event():
     logger.info("[STARTUP] Model loaded: %s", MODEL_PATH)
     logger.info("[STARTUP] ONNX providers: %s", inference_engine.providers)
 
-# ─────────────────────────────────────────────
-# Routes
-# ─────────────────────────────────────────────
-
-# ─────────────────────────────────────────────
-# Storage for export
-# ─────────────────────────────────────────────
-DETECTIONS_LOG: deque = deque(maxlen=10_000)
-
-# ─────────────────────────────────────────────
-# Offline Tile Cache
-# ─────────────────────────────────────────────
-TILE_CACHE_DIR = Path(__file__).parent.parent / "tile_cache"
 TILE_CACHE_DIR.mkdir(exist_ok=True)
-TILE_USER_AGENT = "RescueVision-Edge/1.0 (offline SAR system)"
-TILE_SERVERS = ["a", "b", "c"]
 
 @app.get("/api/tiles/{z}/{x}/{y}.png")
 async def serve_tile(z: int, x: int, y: int):
@@ -375,9 +325,6 @@ async def dynamic_injection(inject: InjectConfig):
 @app.get("/export/csv")
 async def export_csv():
     """Export all detected victim coordinates."""
-    import csv
-    import io
-    from fastapi import Response
 
     if not DETECTIONS_LOG:
         # Return a CSV with just headers if no detections
