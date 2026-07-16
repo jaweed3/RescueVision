@@ -1,11 +1,7 @@
-import Path
-from collections import deque
+from pathlib import Path
 
 MODEL_PATH = Path(__file__).parent.parent.parent / "model.onnx"
-inference_engine = None
-
-DETECTIONS_LOG: deque = deque(maxlen=10_000)
-
+CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 TILE_CACHE_DIR = Path(__file__).parent.parent / "tile_cache"
 TILE_USER_AGENT = "RescueVision-Edge/1.0 (offline SAR system)"
 TILE_SERVERS = ["a", "b", "c"]
