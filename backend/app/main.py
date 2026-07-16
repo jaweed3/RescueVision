@@ -5,16 +5,19 @@ Tahap 3: Model → API → App
 Run: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from app.inference import RescueVisionInference
 from app.gps import extract_exif_gps, calculate_victim_coordinates
-from app.models import DetectionResult, BatchResult, InjectConfig
+from app.models import DetectionResult, BatchResult, InjectConfig, ImageSize, RefCoords
+from collections import deque
 from pathlib import Path
 from typing import Optional
-from constant import MODEL_PATH, inference_engine, DETECTIONS_LOG, TILE_CACHE_DIR, TILE_USER_AGENT, TILE_SERVERS
-from utils import load_config
+from app.constant import MODEL_PATH, CONFIG_PATH, TILE_CACHE_DIR, TILE_USER_AGENT, TILE_SERVERS
+from app.utils import load_config
+from app.logger_config import setup_logging
 import uvicorn
 import json
 import logging
@@ -26,39 +29,24 @@ import shutil
 import urllib.request
 import hashlib
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+setup_logging()
+
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="RescueVision Edge API",
-    description="Lightweight on-device victim detection for post-disaster SAR",
-    version="1.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+inference_engine = None
+DETECTIONS_LOG: deque = deque(maxlen=10_000)
 
 config = load_config()
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global inference_engine
     logger.info("[STARTUP] RescueVision Edge backend starting up")
     logger.info("[STARTUP] Config: %s", config)
     if not MODEL_PATH.exists():
         logger.error("[STARTUP] model.onnx NOT FOUND at %s — inference disabled", MODEL_PATH)
+        yield
         return
     inference_engine = RescueVisionInference(
         model_path=str(MODEL_PATH),
@@ -68,6 +56,22 @@ async def startup_event():
     )
     logger.info("[STARTUP] Model loaded: %s", MODEL_PATH)
     logger.info("[STARTUP] ONNX providers: %s", inference_engine.providers)
+    yield
+
+app = FastAPI(
+    title="RescueVision Edge API",
+    description="Lightweight on-device victim detection for post-disaster SAR",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 TILE_CACHE_DIR.mkdir(exist_ok=True)
 
