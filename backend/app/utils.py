@@ -1,8 +1,8 @@
-from pathlib import Path 
-from constant import DEFAULT_CONFIG
+from app.constant import DEFAULT_CONFIG, CONFIG_PATH
+import logging
 import json
 
-CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+logger = logging.getLogger(__name__)
 
 def load_config():
     config = DEFAULT_CONFIG.copy()
