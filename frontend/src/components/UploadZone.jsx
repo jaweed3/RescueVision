@@ -8,22 +8,16 @@ const UploadIcon = () => (
   </svg>
 )
 
-/**
- * UploadZone Component
- * Handles file selection (drag & drop or click) and triggers processing.
- */
-export default function UploadZone({ onUpload, loading }) {
+export default function UploadZone({ onUpload, onError, loading }) {
   const inputRef = useRef()
   const [dragging, setDragging] = useState(false)
   const [internalLoading, setInternalLoading] = useState(false)
-  const [progress, setProgress] = useState(0)
 
   const handleFiles = async (fileList) => {
     const files = Array.from(fileList || [])
     if (!files.length) return
 
     setInternalLoading(true)
-    setProgress(0)
     
     try {
       let allFiles = []
@@ -31,11 +25,9 @@ export default function UploadZone({ onUpload, loading }) {
 
       for (const file of files) {
         if (file.type.startsWith('video/')) {
-          // Extract metadata if this is the first video in the selection
           if (!firstVideoMetadata) {
             firstVideoMetadata = await extractDJIMetadata(file)
           }
-          // Process frames
           const frames = await extractFramesFromVideo(file, 1, 15)
           allFiles = [...allFiles, ...frames]
         } else {
@@ -46,10 +38,9 @@ export default function UploadZone({ onUpload, loading }) {
       onUpload(allFiles, firstVideoMetadata)
     } catch (err) {
       console.error('[UploadZone] File handling error:', err)
-      alert(err.message || 'Error processing files.')
+      onError?.(err.message || 'Error processing files.')
     } finally {
       setInternalLoading(false)
-      setProgress(0)
     }
   }
 
