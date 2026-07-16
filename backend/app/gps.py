@@ -22,7 +22,7 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
         img = Image.open(image_path)
         logger.debug("[EXIF] Image format=%s mode=%s size=%s", img.format, img.mode, img.size)
 
-        exif_data = img._getexif()
+        exif_data = getattr(img, '_getexif', lambda: None)()
         if not exif_data:
             logger.warning("[EXIF] No EXIF data found in file — image may have been stripped by gallery/browser")
             return None
@@ -138,8 +138,7 @@ def extract_exif_gps(image_path: str) -> Optional[Dict]:
         return None
 
 
-def _convert_to_float(val) -> Optional[float]:
-    """Helper to convert Pillow Rational or tuple to float."""
+def _convert_to_float(val: object) -> Optional[float]:
     if val is None:
         return None
     try:
@@ -154,7 +153,7 @@ def _convert_to_float(val) -> Optional[float]:
         return None
 
 
-def _dms_to_decimal(dms, ref) -> Optional[float]:
+def _dms_to_decimal(dms: object, ref: str) -> Optional[float]:
     """Convert DMS (degrees, minutes, seconds) to decimal degrees."""
     if dms is None or not isinstance(dms, (list, tuple)) or len(dms) < 3:
         return None
