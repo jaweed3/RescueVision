@@ -7,15 +7,35 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 
+class AppConfig(BaseModel):
+    conf_threshold: float = 0.25
+    iou_threshold: float = 0.45
+    input_size: int = 640
+    grid_zone_size_m: int = 50
+    export_format: List[str] = ["csv", "json"]
+    max_batch_size: int = 100
+
+
+class ImageSize(BaseModel):
+    width: int
+    height: int
+
+
+class RefCoords(BaseModel):
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    altitude: Optional[float] = None
+
+
 class VictimDetection(BaseModel):
     id: int
     confidence: float
-    bbox: List[float]       # [x1, y1, x2, y2] in pixels
-    cx_rel: float           # relative center X (0-1)
-    cy_rel: float           # relative center Y (0-1)
-    lat: Optional[float]    # GPS latitude
-    lon: Optional[float]    # GPS longitude
-    accuracy_m: Optional[float]  # coordinate accuracy estimate
+    bbox: List[float]
+    cx_rel: float
+    cy_rel: float
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    accuracy_m: Optional[float] = None
 
 
 class DetectionResult(BaseModel):
@@ -23,9 +43,9 @@ class DetectionResult(BaseModel):
     total_victims: int
     detections: List[VictimDetection]
     inference_ms: float
-    image_size: Dict[str, int]
-    gps_source: str         # "exif" | "manual" | "none"
-    ref_coords: Dict[str, Optional[float]]
+    image_size: ImageSize
+    gps_source: str
+    ref_coords: RefCoords
 
 
 class BatchResult(BaseModel):
