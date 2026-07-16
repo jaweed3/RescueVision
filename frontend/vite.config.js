@@ -6,11 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/detect': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
-      '/inject': 'http://localhost:8000',
-      '/export': 'http://localhost:8000',
+      '/api': {
+        target: 'http://localhost:8000',
+        rewrite: path => path.replace(/^\/api/, '')
+      }
     }
   }
 })
