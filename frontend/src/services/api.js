@@ -1,32 +1,33 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:8000'
+const BASE_URL = '/api'
 
-/**
- * RescueVision Edge API Client
- */
+const client = axios.create({ baseURL: BASE_URL, timeout: 30000 })
+
 export const detectionApi = {
   checkHealth: async () => {
-    const res = await axios.get(`${BASE_URL}/health`)
+    const res = await client.get('/health')
     return res.data
   },
 
   detectSingle: async (file, params) => {
     const formData = new FormData()
     formData.append('file', file)
-    const res = await axios.post(`${BASE_URL}/detect?${params.toString()}`, formData)
+    const qs = params.toString()
+    const res = await client.post(`/detect${qs ? '?' + qs : ''}`, formData)
     return res.data
   },
 
   detectBatch: async (files, params) => {
     const formData = new FormData()
     files.forEach(f => formData.append('files', f))
-    const res = await axios.post(`${BASE_URL}/detect/batch?${params.toString()}`, formData)
+    const qs = params.toString()
+    const res = await client.post(`/detect/batch${qs ? '?' + qs : ''}`, formData)
     return res.data
   },
 
   clearSession: async () => {
-    const res = await axios.post(`${BASE_URL}/export/clear`)
+    const res = await client.post('/export/clear')
     return res.data
   },
 
