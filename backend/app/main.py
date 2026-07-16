@@ -124,15 +124,16 @@ async def detect_single(
     if inference_engine is None:
         raise HTTPException(status_code=503, detail="Model not loaded.")
 
+    filename = file.filename or "unknown"
     file_size_bytes = 0
-    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
         file_size_bytes = tmp.tell()
 
     logger.info(
         "[DETECT] Incoming upload — filename=%r content_type=%r size=%.1f KB",
-        file.filename, file.content_type, file_size_bytes / 1024
+        filename, file.content_type, file_size_bytes / 1024
     )
     logger.debug(
         "[DETECT] Manual GPS params — manual_lat=%s manual_lon=%s manual_altitude=%s",
@@ -192,7 +193,7 @@ async def detect_single(
             logger.warning(
                 "[GPS] Source=NONE — no EXIF GPS and no manual coords provided. "
                 "Map will be empty. filename=%r content_type=%r size=%.1f KB",
-                file.filename, file.content_type, file_size_bytes / 1024
+                filename, file.content_type, file_size_bytes / 1024
             )
 
         enriched = []
@@ -205,6 +206,7 @@ async def detect_single(
                 "cy_rel": det["cy_rel"],
             }
             if ref_lat and ref_lon:
+                assert ref_alt is not None
                 coords = calculate_victim_coordinates(
                     ref_lat, ref_lon, ref_alt,
                     det["cx_rel"] * img_w, det["cy_rel"] * img_h,
@@ -222,7 +224,7 @@ async def detect_single(
                 )
                 # Log for export
                 DETECTIONS_LOG.append({
-                    "filename": file.filename,
+                    "filename": filename,
                     "lat": victim["lat"],
                     "lon": victim["lon"],
                     "confidence": victim["confidence"]
@@ -239,17 +241,17 @@ async def detect_single(
 
         logger.info(
             "[DETECT] Result — file=%r victims=%d gps_source=%s",
-            file.filename, len(enriched), gps_source
+            filename, len(enriched), gps_source
         )
 
         return DetectionResult(
-            filename=file.filename,
+            filename=filename,
             total_victims=len(enriched),
             detections=enriched,
             inference_ms=round(inference_ms, 1),
-            image_size={"width": img_w, "height": img_h},
+            image_size=ImageSize(width=img_w, height=img_h),
             gps_source=gps_source,
-            ref_coords={"lat": ref_lat, "lon": ref_lon, "altitude": ref_alt}
+            ref_coords=RefCoords(lat=ref_lat, lon=ref_lon, altitude=ref_alt),
         )
 
     finally:
@@ -292,8 +294,6 @@ async def dynamic_injection(inject: InjectConfig):
     Panitia can update any config parameter at runtime.
     Changes are persisted to config.json so they survive restarts.
     """
-    global config, inference_engine
-
     updated = {}
     for key, value in inject.parameters.items():
         if key in config:
