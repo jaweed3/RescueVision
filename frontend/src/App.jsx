@@ -69,7 +69,7 @@ export default function App() {
               </div>
               <StatusBar status={systemStatus} />
             </div>
-            <UploadZone onUpload={actions.handleUpload} loading={loading} />
+            <UploadZone onUpload={actions.handleUpload} onError={actions.setError} loading={loading} />
           </div>
 
           <div className="sidebar-card">
@@ -162,7 +162,7 @@ export default function App() {
                 ))}
               </div>
 
-              {allDetections.some(d => d.lat) && (
+              {allDetections.some(d => d.lat != null) && (
                 <div className="main-card map-section-wide">
                   <div className="card-header"><Icons.GPS /> <h3>Mission Map</h3></div>
                   <VictimMap detections={allDetections} />
